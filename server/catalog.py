@@ -1,9 +1,13 @@
 import datetime
+import json
+import os
 
 # 8-dimensional embedding representation (Mocked semantic multimodal vectors)
 # [Action, Drama, Comedy, Sci-Fi, Intensity, Mood_Darkness, Pace_Speed, Family_Friendly]
 
-CONTENT_LIBRARY = [
+LIBRARY_PATH = os.path.join(os.path.dirname(__file__), 'library.json')
+
+DEFAULT_CONTENT_LIBRARY = [
     {
         "id": "movie_01",
         "title": "Midnight in Manhattan",
@@ -163,8 +167,60 @@ CONTENT_LIBRARY = [
         "embedding": [0.1, 0.0, 0.8, 0.0, 0.4, 0.0, 0.8, 1.0],
         "scte35_breaks": [],
         "description": "Fun commercial for a snack food."
+    },
+    {
+        "id": "PROMO_STING_15",
+        "title": "Station ID Stinger",
+        "type": "Promo",
+        "genre": "Promo",
+        "duration_seconds": 15,
+        "rating": "G",
+        "mood": "Exciting",
+        "target_demo": "All",
+        "license_start": "2024-01-01T00:00:00Z",
+        "license_end": "2029-12-31T23:59:59Z",
+        "geo_allow": ["US", "UK", "IN"],
+        "embedding": [0.1, 0.2, 0.1, 0.9, 0.5, 0.5, 0.5, 0.5],
+        "scte35_breaks": [],
+        "description": "15 second station identifier."
+    },
+    {
+        "id": "PROMO_BUMP_30",
+        "title": "Coming Up Next Bumper",
+        "type": "Promo",
+        "genre": "Promo",
+        "duration_seconds": 30,
+        "rating": "G",
+        "mood": "Exciting",
+        "target_demo": "All",
+        "license_start": "2024-01-01T00:00:00Z",
+        "license_end": "2029-12-31T23:59:59Z",
+        "geo_allow": ["US", "UK", "IN"],
+        "embedding": [0.2, 0.3, 0.2, 0.8, 0.6, 0.4, 0.5, 0.5],
+        "scte35_breaks": [],
+        "description": "30 second coming up bumper."
     }
 ]
+
+def load_catalog():
+    if os.path.exists(LIBRARY_PATH):
+        try:
+            with open(LIBRARY_PATH, 'r') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            pass
+            
+    with open(LIBRARY_PATH, 'w') as f:
+        json.dump(DEFAULT_CONTENT_LIBRARY, f, indent=4)
+    return DEFAULT_CONTENT_LIBRARY
+
+def save_catalog(library_data):
+    with open(LIBRARY_PATH, 'w') as f:
+        json.dump(library_data, f, indent=4)
+    global CONTENT_LIBRARY
+    CONTENT_LIBRARY = library_data
+
+CONTENT_LIBRARY = load_catalog()
 
 # A naive genre similarity matrix used as a fallback or explicit scoring feature.
 # 1.0 means identical, 0.0 means completely opposite.

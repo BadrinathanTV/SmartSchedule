@@ -1,0 +1,1365 @@
+[
+    {
+        "id": "movie_01",
+        "title": "Midnight in Manhattan",
+        "type": "Movie",
+        "genre": "Thriller",
+        "duration_seconds": 6300,
+        "rating": "R",
+        "mood": "Intense",
+        "target_demo": "Adults",
+        "license_start": "2024-01-01T00:00:00Z",
+        "license_end": "2027-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "CA",
+            "GB"
+        ],
+        "embedding": [
+            0.7,
+            0.8,
+            0.1,
+            0.2,
+            0.9,
+            0.9,
+            0.6,
+            0.0
+        ],
+        "scte35_breaks": [
+            1200,
+            2400,
+            3600,
+            4800
+        ],
+        "description": "A dark, intense thriller set in modern-day New York."
+    },
+    {
+        "id": "movie_02",
+        "title": "Galaxy Explorers",
+        "type": "Movie",
+        "genre": "Sci-Fi",
+        "duration_seconds": 7200,
+        "rating": "PG-13",
+        "mood": "Adventurous",
+        "target_demo": "All",
+        "license_start": "2023-05-01T00:00:00Z",
+        "license_end": "2028-05-01T00:00:00Z",
+        "geo_allow": [
+            "US",
+            "IN",
+            "GB"
+        ],
+        "embedding": [
+            0.6,
+            0.5,
+            0.4,
+            0.9,
+            0.6,
+            0.2,
+            0.7,
+            0.6
+        ],
+        "scte35_breaks": [
+            1500,
+            3000,
+            4500,
+            6000
+        ],
+        "description": "An epic journey to the edge of the galaxy."
+    },
+    {
+        "id": "movie_03",
+        "title": "Family Feast",
+        "type": "Movie",
+        "genre": "Comedy",
+        "duration_seconds": 5400,
+        "rating": "PG",
+        "mood": "Lighthearted",
+        "target_demo": "All",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-01-01T00:00:00Z",
+        "geo_allow": [
+            "US",
+            "CA",
+            "IN"
+        ],
+        "embedding": [
+            0.1,
+            0.3,
+            0.9,
+            0.0,
+            0.3,
+            0.1,
+            0.5,
+            0.9
+        ],
+        "scte35_breaks": [
+            1000,
+            2000,
+            3000,
+            4000
+        ],
+        "description": "A hilarious look at a dysfunctional family holiday."
+    },
+    {
+        "id": "series_01",
+        "title": "The Last Detective - S01E01",
+        "type": "Series",
+        "genre": "Crime",
+        "duration_seconds": 2520,
+        "rating": "TV-MA",
+        "mood": "Dark",
+        "target_demo": "Adults",
+        "license_start": "2025-01-01T00:00:00Z",
+        "license_end": "2026-01-01T00:00:00Z",
+        "geo_allow": [
+            "US"
+        ],
+        "embedding": [
+            0.5,
+            0.9,
+            0.1,
+            0.0,
+            0.7,
+            0.8,
+            0.4,
+            0.0
+        ],
+        "scte35_breaks": [
+            600,
+            1200,
+            1800
+        ],
+        "description": "A gritty crime drama following a seasoned detective."
+    },
+    {
+        "id": "series_02",
+        "title": "Kitchen Kings - S03E04",
+        "type": "Series",
+        "genre": "Cooking",
+        "duration_seconds": 1320,
+        "rating": "TV-G",
+        "mood": "Energetic",
+        "target_demo": "All",
+        "license_start": "2022-01-01T00:00:00Z",
+        "license_end": "2028-01-01T00:00:00Z",
+        "geo_allow": [
+            "US",
+            "CA",
+            "GB",
+            "IN"
+        ],
+        "embedding": [
+            0.1,
+            0.2,
+            0.5,
+            0.0,
+            0.5,
+            0.0,
+            0.8,
+            1.0
+        ],
+        "scte35_breaks": [
+            600
+        ],
+        "description": "Fast-paced cooking competition."
+    },
+    {
+        "id": "series_03",
+        "title": "Morning Cartoon Blocks",
+        "type": "Series",
+        "genre": "Animation",
+        "duration_seconds": 1200,
+        "rating": "TV-Y",
+        "mood": "Upbeat",
+        "target_demo": "Kids",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-01-01T00:00:00Z",
+        "geo_allow": [
+            "US",
+            "IN"
+        ],
+        "embedding": [
+            0.3,
+            0.1,
+            0.8,
+            0.2,
+            0.4,
+            0.0,
+            0.9,
+            1.0
+        ],
+        "scte35_breaks": [
+            600
+        ],
+        "description": "Bright and colorful animated adventures."
+    },
+    {
+        "id": "promo_01",
+        "title": "Next Up: Sci-Fi Night",
+        "type": "Promo",
+        "genre": "Promo",
+        "duration_seconds": 30,
+        "rating": "G",
+        "mood": "Exciting",
+        "target_demo": "All",
+        "license_start": "2000-01-01T00:00:00Z",
+        "license_end": "2099-01-01T00:00:00Z",
+        "geo_allow": [
+            "US",
+            "CA",
+            "GB",
+            "IN"
+        ],
+        "embedding": [
+            0.5,
+            0.5,
+            0.5,
+            0.8,
+            0.7,
+            0.3,
+            0.8,
+            0.8
+        ],
+        "scte35_breaks": [],
+        "description": "Station ID and promo for upcoming sci-fi movies."
+    },
+    {
+        "id": "promo_02",
+        "title": "Local Weather Update",
+        "type": "Promo",
+        "genre": "News",
+        "duration_seconds": 60,
+        "rating": "G",
+        "mood": "Calm",
+        "target_demo": "All",
+        "license_start": "2000-01-01T00:00:00Z",
+        "license_end": "2099-01-01T00:00:00Z",
+        "geo_allow": [
+            "US",
+            "CA",
+            "GB",
+            "IN"
+        ],
+        "embedding": [
+            0.0,
+            0.2,
+            0.0,
+            0.0,
+            0.1,
+            0.1,
+            0.2,
+            1.0
+        ],
+        "scte35_breaks": [],
+        "description": "A quick look at the local weather forecast."
+    },
+    {
+        "id": "ad_01",
+        "title": "TechBrand Smartphone Ad",
+        "type": "Ad",
+        "genre": "Ad",
+        "duration_seconds": 30,
+        "rating": "G",
+        "mood": "Sleek",
+        "target_demo": "All",
+        "license_start": "2000-01-01T00:00:00Z",
+        "license_end": "2099-01-01T00:00:00Z",
+        "geo_allow": [
+            "US",
+            "CA",
+            "GB",
+            "IN"
+        ],
+        "embedding": [
+            0.2,
+            0.1,
+            0.1,
+            0.8,
+            0.5,
+            0.1,
+            0.7,
+            0.8
+        ],
+        "scte35_breaks": [],
+        "description": "Commercial for a new high-tech smartphone."
+    },
+    {
+        "id": "ad_02",
+        "title": "Crunchy Snacks Ad",
+        "type": "Ad",
+        "genre": "Ad",
+        "duration_seconds": 15,
+        "rating": "G",
+        "mood": "Fun",
+        "target_demo": "Kids",
+        "license_start": "2000-01-01T00:00:00Z",
+        "license_end": "2099-01-01T00:00:00Z",
+        "geo_allow": [
+            "US",
+            "CA",
+            "GB",
+            "IN"
+        ],
+        "embedding": [
+            0.1,
+            0.0,
+            0.8,
+            0.0,
+            0.4,
+            0.0,
+            0.8,
+            1.0
+        ],
+        "scte35_breaks": [],
+        "description": "Fun commercial for a snack food."
+    },
+    {
+        "id": "PROMO_STING_15",
+        "title": "Station ID Stinger",
+        "type": "Promo",
+        "genre": "Promo",
+        "duration_seconds": 15,
+        "rating": "G",
+        "mood": "Exciting",
+        "target_demo": "All",
+        "license_start": "2024-01-01T00:00:00Z",
+        "license_end": "2029-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN"
+        ],
+        "embedding": [
+            0.1,
+            0.2,
+            0.1,
+            0.9,
+            0.5,
+            0.5,
+            0.5,
+            0.5
+        ],
+        "scte35_breaks": [],
+        "description": "15 second station identifier."
+    },
+    {
+        "id": "PROMO_BUMP_30",
+        "title": "Coming Up Next Bumper",
+        "type": "Promo",
+        "genre": "Promo",
+        "duration_seconds": 30,
+        "rating": "G",
+        "mood": "Exciting",
+        "target_demo": "All",
+        "license_start": "2024-01-01T00:00:00Z",
+        "license_end": "2029-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN"
+        ],
+        "embedding": [
+            0.2,
+            0.3,
+            0.2,
+            0.8,
+            0.6,
+            0.4,
+            0.5,
+            0.5
+        ],
+        "scte35_breaks": [],
+        "description": "30 second coming up bumper."
+    },
+    {
+        "id": "tvmaze_1",
+        "title": "Under the Dome",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-MA",
+        "mood": "Dark",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.079,
+            0.862,
+            0.193,
+            0.922,
+            0.894,
+            0.876,
+            0.509,
+            0.038
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "Under the Dome is the story of a small town that is suddenly and inexplicably sealed off from the rest of the world by an enormous transparent dome. T..."
+    },
+    {
+        "id": "tvmaze_2",
+        "title": "Person of Interest",
+        "type": "Series",
+        "genre": "Action",
+        "duration_seconds": 3600,
+        "rating": "TV-14",
+        "mood": "Neutral",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.872,
+            0.115,
+            0.065,
+            0.809,
+            0.84,
+            0.121,
+            0.726,
+            0.479
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "You are being watched. The government has a secret system, a machine that spies on you every hour of every day. I know because I built it. I designed ..."
+    },
+    {
+        "id": "tvmaze_3",
+        "title": "Bitten",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-MA",
+        "mood": "Dark",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.121,
+            0.852,
+            0.085,
+            0.199,
+            0.965,
+            0.881,
+            0.533,
+            0.014
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "Based on the critically acclaimed series of novels from Kelley Armstrong. Set in Toronto and upper New York State, Bitten follows the adventures of 28..."
+    },
+    {
+        "id": "tvmaze_4",
+        "title": "Arrow",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-14",
+        "mood": "Neutral",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.923,
+            0.811,
+            0.105,
+            0.904,
+            0.647,
+            0.693,
+            0.899,
+            0.535
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "After a violent shipwreck, billionaire playboy Oliver Queen was missing and presumed dead for five years before being discovered alive on a remote isl..."
+    },
+    {
+        "id": "tvmaze_5",
+        "title": "True Detective",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3780,
+        "rating": "TV-MA",
+        "mood": "Dark",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.006,
+            0.848,
+            0.153,
+            0.056,
+            0.905,
+            0.869,
+            0.443,
+            0.069
+        ],
+        "scte35_breaks": [
+            1260,
+            2520
+        ],
+        "description": "Touch darkness and darkness touches you back. True Detective centers on troubled cops and the investigations that drive them to the edge. Each season ..."
+    },
+    {
+        "id": "tvmaze_6",
+        "title": "The 100",
+        "type": "Series",
+        "genre": "Action",
+        "duration_seconds": 3600,
+        "rating": "TV-14",
+        "mood": "Neutral",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.848,
+            0.168,
+            0.008,
+            0.847,
+            0.87,
+            0.236,
+            0.857,
+            0.424
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "Ninety-seven years ago, nuclear Armageddon decimated planet Earth, destroying civilization. The only survivors were the 400 inhabitants of 12 internat..."
+    },
+    {
+        "id": "tvmaze_7",
+        "title": "Homeland",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-MA",
+        "mood": "Dark",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.071,
+            0.831,
+            0.174,
+            0.172,
+            0.941,
+            0.823,
+            0.41,
+            -0.082
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "The winner of 6 Emmy Awards including Outstanding Drama Series, Homeland is an edge-of-your-seat sensation. Marine Sergeant Nicholas Brody is both a d..."
+    },
+    {
+        "id": "tvmaze_8",
+        "title": "Glee",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-14",
+        "mood": "Neutral",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.011,
+            0.953,
+            0.146,
+            0.13,
+            0.562,
+            0.795,
+            0.576,
+            0.516
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "Glee is a musical comedy about a group of ambitious and talented young adults in search of strength, acceptance and, ultimately, their voice...."
+    },
+    {
+        "id": "tvmaze_9",
+        "title": "Revenge",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-MA",
+        "mood": "Dark",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.146,
+            0.871,
+            0.149,
+            0.14,
+            0.851,
+            0.918,
+            0.476,
+            0.067
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "This is not a story about forgiveness; Revenge is a show about retribution. Meet Emily Thorne, the newest resident of The Hamptons. When she was a lit..."
+    },
+    {
+        "id": "tvmaze_10",
+        "title": "Grimm",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-14",
+        "mood": "Neutral",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.138,
+            0.908,
+            0.07,
+            0.031,
+            0.605,
+            0.684,
+            0.442,
+            0.428
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "Grimm is a drama series inspired by the classic Grimm Brothers' Fairy Tales. After Portland homicide detective Nick Burkhardt discovers he's descended..."
+    },
+    {
+        "id": "tvmaze_11",
+        "title": "Gotham",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-14",
+        "mood": "Neutral",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.824,
+            0.899,
+            0.091,
+            0.138,
+            0.607,
+            0.606,
+            0.709,
+            0.495
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "The good. The evil. The beginning.Everyone knows the name Commissioner Gordon. He is one of the crime world's greatest foes, a man whose reputation is..."
+    },
+    {
+        "id": "tvmaze_12",
+        "title": "Lost Girl",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-MA",
+        "mood": "Dark",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.013,
+            0.876,
+            0.01,
+            0.195,
+            0.979,
+            0.893,
+            0.538,
+            0.081
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "Lost Girl follows supernatural seductress Bo, a Succubus who feeds on the sexual energy of humans. Growing up with human parents, Bo had no reason to ..."
+    },
+    {
+        "id": "tvmaze_13",
+        "title": "The Flash",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-14",
+        "mood": "Neutral",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.868,
+            0.873,
+            0.041,
+            0.842,
+            0.503,
+            0.758,
+            0.815,
+            0.497
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "After a particle accelerator causes a freak storm, CSI Investigator Barry Allen is struck by lightning and falls into a coma. Months later he awakens ..."
+    },
+    {
+        "id": "tvmaze_14",
+        "title": "Continuum",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-14",
+        "mood": "Neutral",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.068,
+            0.918,
+            0.186,
+            0.868,
+            0.68,
+            0.763,
+            0.407,
+            0.527
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "Continuum centers on the conflict between a group of rebels from the year 2077 who time-travel to Vancouver, BC, in 2012, and a police officer who acc..."
+    },
+    {
+        "id": "tvmaze_15",
+        "title": "Constantine",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-MA",
+        "mood": "Dark",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.925,
+            0.878,
+            0.096,
+            0.037,
+            0.977,
+            0.902,
+            0.718,
+            -0.091
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "Based on the wildly popular comic book series \"Hellblazer\" from DC Comics, seasoned demon hunter and master of the occult John Constantine is armed wi..."
+    },
+    {
+        "id": "tvmaze_16",
+        "title": "Penny Dreadful",
+        "type": "Series",
+        "genre": "Horror",
+        "duration_seconds": 3600,
+        "rating": "TV-MA",
+        "mood": "Dark",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.079,
+            0.081,
+            0.012,
+            0.061,
+            0.811,
+            0.892,
+            0.452,
+            0.008
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "Some of literature's most terrifying characters, including Dr. Frankenstein and his monster, Dorian Gray, and iconic figures from the novel Dracula ar..."
+    },
+    {
+        "id": "tvmaze_18",
+        "title": "The Amazing Race",
+        "type": "Series",
+        "genre": "Action",
+        "duration_seconds": 3900,
+        "rating": "TV-G",
+        "mood": "Lighthearted",
+        "target_demo": "Kids",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.973,
+            0.184,
+            0.001,
+            0.143,
+            0.339,
+            0.04,
+            0.737,
+            1.061
+        ],
+        "scte35_breaks": [
+            1300,
+            2600
+        ],
+        "description": "From athletes and actors to tattoo artists, social workers and musicians - a diverse mix of teams will need to utilize their street smarts and savvy k..."
+    },
+    {
+        "id": "tvmaze_19",
+        "title": "Supernatural",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-14",
+        "mood": "Neutral",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.874,
+            0.971,
+            0.158,
+            0.04,
+            0.648,
+            0.605,
+            0.873,
+            0.474
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "This haunting series follows the Winchester brothers as they crisscross the lonely and mysterious back roads of the country in their '67 Chevy Impala,..."
+    },
+    {
+        "id": "tvmaze_20",
+        "title": "The Strain",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3660,
+        "rating": "TV-MA",
+        "mood": "Dark",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.19,
+            0.936,
+            0.056,
+            0.174,
+            0.861,
+            0.888,
+            0.486,
+            -0.095
+        ],
+        "scte35_breaks": [
+            1220,
+            2440
+        ],
+        "description": "The Strain is a high-concept thriller that tells the story of Dr. Ephraim Goodweather, the head of the Center for Disease Control Canary Team in New Y..."
+    },
+    {
+        "id": "tvmaze_21",
+        "title": "The Last Ship",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-MA",
+        "mood": "Dark",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.933,
+            0.859,
+            0.044,
+            0.182,
+            0.994,
+            0.992,
+            0.853,
+            -0.006
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "Their mission is simple: Find a cure. Stop the virus. Save the world. When a global pandemic wipes out eighty percent of the planet's population, the ..."
+    },
+    {
+        "id": "tvmaze_22",
+        "title": "True Blood",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-14",
+        "mood": "Neutral",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.178,
+            0.995,
+            0.119,
+            0.015,
+            0.596,
+            0.709,
+            0.412,
+            0.547
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "True Blood is a horror/drama based on a series of novels called <i>The Southern American Vampires Mysteries</i>. It focuses on Sookie Stackhouse and h..."
+    },
+    {
+        "id": "tvmaze_23",
+        "title": "Once Upon a Time in Wonderland",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-14",
+        "mood": "Neutral",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.112,
+            0.833,
+            0.103,
+            0.128,
+            0.505,
+            0.603,
+            0.502,
+            0.561
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "In Victorian England, the young and beautiful Alice tells a tale of a strange new land that exists on the other side of a rabbit hole. An invisible ca..."
+    },
+    {
+        "id": "tvmaze_24",
+        "title": "Hawaii Five-0",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-14",
+        "mood": "Neutral",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.852,
+            0.932,
+            0.154,
+            0.182,
+            0.579,
+            0.636,
+            0.878,
+            0.416
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "Hawaii Five-0 is a contemporary take on the classic series about a new elite federalized task force whose mission is to wipe out the crime that washes..."
+    },
+    {
+        "id": "tvmaze_25",
+        "title": "Hellsing",
+        "type": "Series",
+        "genre": "Anime",
+        "duration_seconds": 1800,
+        "rating": "TV-MA",
+        "mood": "Dark",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.11,
+            0.056,
+            0.171,
+            0.026,
+            0.831,
+            0.86,
+            0.553,
+            -0.054
+        ],
+        "scte35_breaks": [
+            600,
+            1200
+        ],
+        "description": "Hellsing is a 13-part anime based on the manga of the same name. The plot is significantly difficult to that of the the manga although the characters ..."
+    },
+    {
+        "id": "tvmaze_26",
+        "title": "Hellsing Ultimate",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3000,
+        "rating": "TV-MA",
+        "mood": "Dark",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.852,
+            0.86,
+            0.03,
+            0.061,
+            0.994,
+            0.988,
+            0.851,
+            -0.036
+        ],
+        "scte35_breaks": [
+            1000,
+            2000
+        ],
+        "description": "Hellsing Ultimate, unlike the 13-part <i>Hellsing</i> series, follows the manga of the same name very closely. Alucard being the main protagonist and ..."
+    },
+    {
+        "id": "tvmaze_27",
+        "title": "Berserk",
+        "type": "Series",
+        "genre": "Anime",
+        "duration_seconds": 1500,
+        "rating": "TV-MA",
+        "mood": "Dark",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.16,
+            0.027,
+            0.095,
+            0.191,
+            0.927,
+            0.963,
+            0.411,
+            -0.041
+        ],
+        "scte35_breaks": [
+            500,
+            1000
+        ],
+        "description": "Berserk is a 25-part anime set in a dark fantasy/horror environment whereby the series focuses on the main character guts; a lone swordman who later m..."
+    },
+    {
+        "id": "tvmaze_28",
+        "title": "Californication",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 1800,
+        "rating": "TV-14",
+        "mood": "Upbeat",
+        "target_demo": "All",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.103,
+            0.801,
+            0.997,
+            0.102,
+            0.535,
+            0.151,
+            0.561,
+            0.948
+        ],
+        "scte35_breaks": [
+            600,
+            1200
+        ],
+        "description": "Californication is a series based around the writer Hank Moody. He moves to California and suffers a writers block as well as many other family and pe..."
+    },
+    {
+        "id": "tvmaze_29",
+        "title": "Vikings",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3600,
+        "rating": "TV-14",
+        "mood": "Neutral",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.95,
+            0.897,
+            0.194,
+            0.069,
+            0.616,
+            0.674,
+            0.872,
+            0.594
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "Vikings transports us to the brutal and mysterious world of Ragnar Lothbrok, a Viking warrior and farmer who yearns to explore - and raid - the distan..."
+    },
+    {
+        "id": "tvmaze_30",
+        "title": "American Horror Story",
+        "type": "Series",
+        "genre": "Drama",
+        "duration_seconds": 3660,
+        "rating": "TV-MA",
+        "mood": "Dark",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.044,
+            0.807,
+            0.067,
+            0.143,
+            0.84,
+            0.887,
+            0.597,
+            0.074
+        ],
+        "scte35_breaks": [
+            1220,
+            2440
+        ],
+        "description": "American Horror Story is an horror television anthology series. Each season is conceived as a self-contained miniseries, following a disparate set of ..."
+    },
+    {
+        "id": "tvmaze_31",
+        "title": "Marvel's Agents of S.H.I.E.L.D.",
+        "type": "Series",
+        "genre": "Action",
+        "duration_seconds": 3600,
+        "rating": "TV-14",
+        "mood": "Neutral",
+        "target_demo": "Adults",
+        "license_start": "2020-01-01T00:00:00Z",
+        "license_end": "2030-12-31T23:59:59Z",
+        "geo_allow": [
+            "US",
+            "UK",
+            "IN",
+            "CA"
+        ],
+        "embedding": [
+            0.961,
+            0.037,
+            0.156,
+            0.988,
+            0.732,
+            0.189,
+            0.859,
+            0.457
+        ],
+        "scte35_breaks": [
+            1200,
+            2400
+        ],
+        "description": "Phil Coulson heads an elite team of fellow agents with the worldwide law-enforcement organization known as S.H.I.E.L.D. (Strategic Homeland Interventi..."
+    }
+]

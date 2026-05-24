@@ -28,6 +28,7 @@ def main():
     """)
     print(f"Starting server on port {PORT}...")
     
+    socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("", PORT), SmartScheduleHandler) as httpd:
         print(f"Serving at http://localhost:{PORT}")
         try:

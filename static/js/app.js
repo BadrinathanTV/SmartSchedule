@@ -40,12 +40,26 @@ async function initApp() {
         }
         terminal.log("INITIATING AI OPTIMIZATION...");
         try {
+            const originalSchedule = [...timeline.schedule];
             const data = await api.optimizeSchedule(timeline.schedule, {retention: 1, watch_time: 1, ad_revenue: 1});
             terminal.log(`Optimization complete! Utility improved from ${data.utility_before.toFixed(2)} to ${data.utility_after.toFixed(2)}`);
             if (data.reasoning_log) {
                 data.reasoning_log.forEach(l => terminal.log("> " + l));
             }
             timeline.setSchedule(data.optimized_schedule);
+            
+            // Run Digital Twin Simulator Comparison
+            const simData = await api.simulate(originalSchedule, data.optimized_schedule);
+            
+            // Render Retention SVG chart
+            charts.renderRetentionCurve('analytics-chart-container', simData.retention_curve_before, simData.retention_curve_after);
+            
+            // Update UI Metric Cards
+            document.getElementById('metric-watch-change').textContent = simData.delta_summary.watch_time_change;
+            document.getElementById('metric-rev-change').textContent = simData.delta_summary.revenue_change;
+            
+            const avgRet = simData.retention_curve_after.reduce((a,b)=>a+b, 0) / simData.retention_curve_after.length;
+            document.getElementById('metric-ret-rate').textContent = (avgRet * 100).toFixed(1) + "%";
             
             // update canvas title
             const firstAssetId = data.optimized_schedule[0];
@@ -54,6 +68,68 @@ async function initApp() {
         } catch (e) {
             console.error(e);
             terminal.log("ERROR: Optimization failed.");
+        }
+    });
+
+    // Self-Healing & QC Compliance Event Listener
+    document.getElementById('btn-run-heal').addEventListener('click', async () => {
+        if (timeline.schedule.length === 0) {
+            alert("Add assets to the timeline first.");
+            return;
+        }
+        
+        const region = document.getElementById('heal-region').value;
+        const datetimeVal = document.getElementById('heal-datetime').value + ":00Z";
+        
+        terminal.log(`INITIATING COMPLIANCE QC & SELF-HEAL [Region: ${region} | Date: ${datetimeVal}]...`);
+        
+        try {
+            // 1. Run QC compliance check
+            const qcData = await fetch('/api/qc', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ schedule: timeline.schedule })
+            }).then(r => r.json());
+            
+            const qcContainer = document.getElementById('qc-alerts-container');
+            qcContainer.innerHTML = '';
+            
+            if (qcData.status === "PASS") {
+                qcContainer.innerHTML = '<span style="color: var(--accent-green);">✓ All compliance checks passed. Schedule is clean.</span>';
+            } else {
+                if (qcData.errors.length > 0) {
+                    qcData.errors.forEach(err => {
+                        qcContainer.innerHTML += `<div style="color: var(--accent-red); margin-bottom: 5px;">⚠ [CRITICAL ERROR] ${err}</div>`;
+                    });
+                }
+                if (qcData.warnings.length > 0) {
+                    qcData.warnings.forEach(warn => {
+                        qcContainer.innerHTML += `<div style="color: var(--accent-orange); margin-bottom: 5px;">⚡ [WARNING] ${warn}</div>`;
+                    });
+                }
+            }
+            
+            // 2. Run Self Healing
+            const healData = await api.selfHeal(timeline.schedule, datetimeVal, region);
+            const logsContainer = document.getElementById('heal-logs-container');
+            logsContainer.innerHTML = '';
+            
+            if (healData.changes_log.length === 0) {
+                logsContainer.innerHTML = '✓ No self-healing actions required. Schedule is 100% compliant.';
+            } else {
+                healData.changes_log.forEach(log => {
+                    const logLine = `[REPLACE] Failed Asset: ${log.original_title} (${log.original_id}) -> Replaced by: ${log.replacement_title} (${log.replacement_id}) | Reason: ${log.reason} | Sim Score: ${log.similarity_score}\n`;
+                    logsContainer.innerHTML += `<div>${logLine}</div>`;
+                    terminal.log(`[SELF-HEAL] ${logLine}`);
+                });
+                
+                // Update EPG with the self-healed schedule
+                timeline.setSchedule(healData.healed_schedule);
+            }
+            
+        } catch (e) {
+            console.error(e);
+            terminal.log("ERROR: Compliance & Self-heal check failed.");
         }
     });
 }

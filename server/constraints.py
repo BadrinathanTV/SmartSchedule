@@ -26,13 +26,12 @@ def check_rating_timeslot(asset, hour):
 
 def validate_schedule(schedule_assets, start_hour, region, start_date_iso):
     current_dt = datetime.datetime.fromisoformat(start_date_iso.replace('Z', '+00:00'))
-    current_time_seconds = 0
     violations = []
     
     recent_ads = []
 
     for idx, asset in enumerate(schedule_assets):
-        current_hour = (start_hour + int(current_time_seconds / 3600)) % 24
+        current_hour = current_dt.hour
         
         if not check_rights_window(asset, current_dt):
             violations.append({"index": idx, "asset_id": asset['id'], "title": asset.get('title'), "reason": "License expired or not started", "severity": "HIGH"})
@@ -50,7 +49,6 @@ def validate_schedule(schedule_assets, start_hour, region, start_date_iso):
             if len(recent_ads) > 3:
                 recent_ads.pop(0)
 
-        current_time_seconds += asset.get('duration_seconds', 0)
         current_dt += datetime.timedelta(seconds=asset.get('duration_seconds', 0))
 
     return violations

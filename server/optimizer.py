@@ -12,8 +12,8 @@ def calculate_ad_revenue(schedule_assets):
         revenue += len(asset.get('scte35_breaks', [])) * 50
     return revenue
 
-def utility(schedule_ids, start_hour, weights):
-    predictions = predict_sequence(schedule_ids, start_hour)
+def utility(schedule_ids, target_date_iso, weights):
+    predictions = predict_sequence(schedule_ids, target_date_iso)
     if not predictions:
         return 0.0
     
@@ -34,14 +34,18 @@ def utility(schedule_ids, start_hour, weights):
            weights.get('watch_time', 1.0) * norm_watch_time + \
            weights.get('ad_revenue', 1.0) * norm_revenue
 
-def simulated_annealing_optimizer(schedule_ids, weights, start_hour=0, temp=100.0, cooling=0.95, min_temp=1.0):
+def simulated_annealing_optimizer(schedule_ids, weights, target_date_iso=None, temp=100.0, cooling=0.95, min_temp=1.0):
+    # Save the global random state to prevent side effects in other modules
+    original_state = random.getstate()
+    random.seed(42)  # Enforce local deterministic seeding for stable trajectories
+    
     current_schedule = list(schedule_ids)
-    current_utility = utility(current_schedule, start_hour, weights)
+    current_utility = utility(current_schedule, target_date_iso, weights)
     best_schedule = list(current_schedule)
     best_utility = current_utility
     
     reasoning_log = []
-    reasoning_log.append(f"Starting SA optimization. Initial utility: {current_utility:.2f}")
+    reasoning_log.append(f"Starting SA optimization (Stabilized trajectory). Initial utility: {current_utility:.2f}")
     
     iterations = 0
     while temp > min_temp:
@@ -58,7 +62,7 @@ def simulated_annealing_optimizer(schedule_ids, weights, start_hour=0, temp=100.
         candidate = list(current_schedule)
         candidate[idx1], candidate[idx2] = candidate[idx2], candidate[idx1]
         
-        candidate_utility = utility(candidate, start_hour, weights)
+        candidate_utility = utility(candidate, target_date_iso, weights)
         
         if candidate_utility > current_utility:
             current_schedule = candidate
@@ -81,4 +85,8 @@ def simulated_annealing_optimizer(schedule_ids, weights, start_hour=0, temp=100.
         temp *= cooling
         
     reasoning_log.append(f"Finished after {iterations} iterations. Final utility: {best_utility:.2f}")
+    
+    # Restore the original global random state
+    random.setstate(original_state)
+    
     return best_schedule, best_utility, current_utility, reasoning_log

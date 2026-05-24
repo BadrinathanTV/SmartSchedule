@@ -2,9 +2,9 @@ from server.predictor import predict_sequence, expected_watch_duration
 from server.catalog import get_asset
 from server.optimizer import calculate_ad_revenue
 
-def simulate_outcomes(schedule_before_ids, schedule_after_ids, start_hour=0):
-    pred_before = predict_sequence(schedule_before_ids, start_hour)
-    pred_after = predict_sequence(schedule_after_ids, start_hour)
+def simulate_outcomes(schedule_before_ids, schedule_after_ids, target_date_iso=None):
+    pred_before = predict_sequence(schedule_before_ids, target_date_iso)
+    pred_after = predict_sequence(schedule_after_ids, target_date_iso)
     
     assets_before = [get_asset(aid) for aid in schedule_before_ids if get_asset(aid)]
     assets_after = [get_asset(aid) for aid in schedule_after_ids if get_asset(aid)]
