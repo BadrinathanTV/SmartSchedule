@@ -1,21 +1,11 @@
-import http.server
-import socketserver
-import os
-import sys
+import uvicorn
 
-# Change working directory so that SimpleHTTPRequestHandler serves from static/
-web_dir = os.path.join(os.path.dirname(__file__), 'static')
-if not os.path.exists(web_dir):
-    os.makedirs(web_dir)
-os.chdir(web_dir)
-
-# Add the parent directory to sys.path so we can import server package
-sys.path.insert(0, os.path.dirname(web_dir))
-from server.handler import SmartScheduleHandler
+from server.api import app
 
 PORT = 8000
 
-def main():
+
+def main() -> None:
     print(r"""
     ___  ___      _______        _____                      __  __ 
     |  \/  |     /  ___| |      /  __ \                    |  \/  |
@@ -24,19 +14,11 @@ def main():
     | |  | | (_| /\__/ / ||  __/| \__/\ | | (_) \ V  V /   | |  | |
     \_|  |_/\__,_\____/ \__\___| \____/_|  \___/ \_/\_/    \_|  |_/
     
-    Amagi Smart Scheduler & Playout Simulator (Zero-Dependency)
+    SmartSchedule Backend (FastAPI)
     """)
-    print(f"Starting server on port {PORT}...")
-    
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("", PORT), SmartScheduleHandler) as httpd:
-        print(f"Serving at http://localhost:{PORT}")
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\nShutting down server.")
-            httpd.server_close()
-            sys.exit(0)
+    print(f"Starting API on http://localhost:{PORT}")
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
+
 
 if __name__ == "__main__":
     main()
