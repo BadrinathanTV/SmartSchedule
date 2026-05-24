@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amagi Smart Scheduler</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="top-bar">
+        <div class="logo">AMAGI MCR</div>
+        <div class="status-beacons">
+            <span class="beacon online">LIVE PLAYOUT ONLINE</span>
+            <span class="beacon ad-connected">AD INSERTION CONNECTED</span>
+        </div>
+        <div class="clock" id="system-clock">00:00:00 UTC</div>
+    </header>
+    
+    <div class="app-container">
+        <aside class="sidebar">
+            <nav>
+                <button class="tab-btn active" data-target="tab-dashboard">Dashboard</button>
+                <button class="tab-btn" data-target="tab-planner">Smart Planner</button>
+                <button class="tab-btn" data-target="tab-analytics">ML Analytics</button>
+                <button class="tab-btn" data-target="tab-heal">Self-Heal</button>
+            </nav>
+        </aside>
+        
+        <main class="workspace">
+            <div id="tab-dashboard" class="tab-content active">
+                <h2>Control Room Dashboard</h2>
+                <div style="display: flex; gap: 20px;">
+                    <div style="flex: 2;">
+                        <canvas id="playout-canvas" width="640" height="360" style="background: #000; border: 1px solid var(--border-glow); border-radius: 8px; width: 100%;"></canvas>
+                    </div>
+                    <div style="flex: 1; display: flex; flex-direction: column;">
+                        <h3>Playout Server Logs</h3>
+                        <div id="terminal-log" style="flex: 1; background: #000; color: #0f0; font-family: monospace; padding: 10px; overflow-y: auto; border: 1px solid var(--border-glow); border-radius: 8px; font-size: 0.8rem; height: 300px;"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="tab-planner" class="tab-content">
+                <h2>Smart Planner</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <p>Double-click items in the library to add them, and double-click timeline items to remove.</p>
+                    <button id="btn-optimize" style="background: var(--accent-cyan); color: #000; border: none; padding: 8px 16px; border-radius: 4px; font-weight: bold; cursor: pointer;">Run AI Optimizer</button>
+                </div>
+                <div id="timeline-container" style="min-height: 150px; border: 1px dashed var(--border-glow); padding: 10px; border-radius: 8px; margin-bottom: 20px;"></div>
+                <div class="library-container">
+                    <h3>Asset Library</h3>
+                    <ul id="asset-library-list"></ul>
+                </div>
+            </div>
+            
+            <div id="tab-analytics" class="tab-content">
+                <h2>ML Analytics</h2>
+                <p>Retention curves and heatmaps will appear here.</p>
+            </div>
+            
+            <div id="tab-heal" class="tab-content">
+                <h2>Self-Healing & Twin Simulator</h2>
+                <p>Compliance warnings and auto-repair.</p>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/timeline.js"></script>
+    <script src="js/canvas.js"></script>
+    <script src="js/terminal.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
