@@ -1,16 +1,22 @@
 import math
-import json
 import os
 from server.catalog import get_asset, GENRE_SIMILARITY_MATRIX, cosine_similarity
 from server.calendar_brain import get_context, get_genre_score_for_context
 
-# Load Mock XGBoost Model
-MODEL_PATH = os.path.join(os.path.dirname(__file__), 'xgboost_model.json')
 try:
-    with open(MODEL_PATH, 'r') as f:
-        XGBOOST_MODEL = json.load(f)
-except FileNotFoundError:
-    XGBOOST_MODEL = None
+    import xgboost as xgb
+except Exception:
+    xgb = None
+
+# Path to trained XGBoost model file (Booster .bst)
+MODEL_PATH = os.path.join(os.path.dirname(__file__), 'xgboost_model.bst')
+_XGB_BOOSTER = None
+if xgb is not None and os.path.exists(MODEL_PATH):
+    try:
+        _XGB_BOOSTER = xgb.Booster()
+        _XGB_BOOSTER.load_model(MODEL_PATH)
+    except Exception:
+        _XGB_BOOSTER = None
 
 def demographic_alignment(demo_a, demo_b):
     matrix = {
@@ -82,39 +88,28 @@ def get_festival_boost(asset, context):
     boost = context.get('genre_boosts', {}).get(genre, 1.0)
     return min(1.0, (boost - 1.0) / 1.5)  # Normalize: 1.0=no boost → 0.0, 2.5=max → 1.0
 
-def evaluate_tree(node, features):
-    if "leaf_value" in node:
-        return node["leaf_value"]
-        
-    feature_val = features.get(node["feature"], 0.0)
-    
-    if feature_val < node["split_value"]:
-        return evaluate_tree(next(n for n in XGBOOST_MODEL["trees"][0]["nodes"] if n["node_id"] == node["left"]), features)
-    else:
-        return evaluate_tree(next(n for n in XGBOOST_MODEL["trees"][0]["nodes"] if n["node_id"] == node["right"]), features)
+FEATURE_ORDER = [
+    'embedding_similarity', 'genre_similarity', 'demographic_alignment',
+    'time_slot_fit', 'genre_fatigue', 'seasonality_fit', 'day_of_week_fit', 'festival_boost'
+]
 
 def evaluate_xgboost(features):
-    if not XGBOOST_MODEL:
-        return 0.0
-        
-    score = 0.0
-    for tree in XGBOOST_MODEL["trees"]:
-        root = tree["nodes"][0]
-        # Quick hack to search for nodes in the current tree
-        def search_node(node_id):
-            return next(n for n in tree["nodes"] if n.get("node_id") == node_id)
-            
-        def eval_node(node):
-            if "leaf_value" in node:
-                return node["leaf_value"]
-            if features.get(node["feature"], 0.0) < node["split_value"]:
-                return eval_node(search_node(node["left"]))
-            else:
-                return eval_node(search_node(node["right"]))
-                
-        score += eval_node(root)
-        
-    return score
+    """Predict a numeric score from a trained XGBoost Booster.
+
+    Returns 0.0 if no Booster is available. To enforce real-model usage, check `_XGB_BOOSTER` and
+    run `server/train_xgboost.py` to create a model at `server/xgboost_model.bst`.
+    """
+    if _XGB_BOOSTER is None:
+        # No trained model available — raise so caller can detect and handle appropriately
+        raise RuntimeError("XGBoost model not found. Train a model using server/train_xgboost.py and save to server/xgboost_model.bst")
+
+    # Ensure features in order
+    import numpy as _np
+    vec = [_np.float32(features.get(k, 0.0)) for k in FEATURE_ORDER]
+    dmat = xgb.DMatrix(_np.array([vec]), feature_names=FEATURE_ORDER)
+    preds = _XGB_BOOSTER.predict(dmat)
+    # Booster returns array-like
+    return float(preds[0]) if len(preds) > 0 else 0.0
 
 def predict_transition(asset_a, asset_b, time_slot, cumulative_genre_minutes, month=1, context=None):
     """Returns drop-off probability and feature breakdown using pre-trained mocked XGBoost."""

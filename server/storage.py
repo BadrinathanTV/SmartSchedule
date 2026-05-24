@@ -294,6 +294,11 @@ def list_media() -> List[Dict[str, object]]:
     return [_row_to_media(r) for r in rows]
 
 
+def get_media(media_id: str) -> Optional[Dict[str, object]]:
+    row = fetch_one("SELECT * FROM media_uploads WHERE id = ?", (media_id,))
+    return _row_to_media(row) if row else None
+
+
 def create_media(payload: Dict[str, object]) -> Dict[str, object]:
     media_id = payload.get("id") or _new_id("media")
     payload = {**payload, "id": media_id}
@@ -301,8 +306,9 @@ def create_media(payload: Dict[str, object]) -> Dict[str, object]:
         """
         INSERT INTO media_uploads (
             id, title, file_name, file_size, duration, status, upload_progress,
-            transcoding_progress, metadata, uploaded_at, thumbnail_url
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            transcoding_progress, metadata, uploaded_at, thumbnail_url,
+            transcription, transcription_source, analytics_data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             payload["id"],
@@ -316,6 +322,9 @@ def create_media(payload: Dict[str, object]) -> Dict[str, object]:
             json_dump(payload["metadata"]),
             payload["uploadedAt"],
             payload.get("thumbnailUrl"),
+            payload.get("transcription"),
+            payload.get("transcriptionSource"),
+            json_dump(payload.get("analyticsData")) if payload.get("analyticsData") is not None else None,
         ),
     )
     return payload
@@ -343,6 +352,21 @@ def create_media_file(payload: Dict[str, object]) -> Dict[str, object]:
     return payload
 
 
+def get_media_file(media_id: str) -> Optional[Dict[str, object]]:
+    row = fetch_one("SELECT * FROM media_files WHERE media_id = ?", (media_id,))
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "media_id": row["media_id"],
+        "file_name": row["file_name"],
+        "content_type": row["content_type"],
+        "size": row["size"],
+        "blob": row["blob"],
+        "created_at": row["created_at"],
+    }
+
+
 def update_media(media_id: str, updates: Dict[str, object]) -> Optional[Dict[str, object]]:
     row = fetch_one("SELECT * FROM media_uploads WHERE id = ?", (media_id,))
     if not row:
@@ -361,7 +385,10 @@ def update_media(media_id: str, updates: Dict[str, object]) -> Optional[Dict[str
             transcoding_progress = ?,
             metadata = ?,
             uploaded_at = ?,
-            thumbnail_url = ?
+            thumbnail_url = ?,
+            transcription = ?,
+            transcription_source = ?,
+            analytics_data = ?
         WHERE id = ?
         """,
         (
@@ -375,13 +402,54 @@ def update_media(media_id: str, updates: Dict[str, object]) -> Optional[Dict[str
             json_dump(merged["metadata"]),
             merged["uploadedAt"],
             merged.get("thumbnailUrl"),
+            merged.get("transcription"),
+            merged.get("transcriptionSource"),
+            json_dump(merged.get("analyticsData")) if merged.get("analyticsData") is not None else None,
             media_id,
         ),
     )
     return merged
 
 
+def _normalize_media_title(value: str) -> str:
+    return " ".join(value.lower().split())
+
+
+def import_program_analytics(programs: List[Dict[str, object]]) -> Dict[str, object]:
+    rows = fetch_all("SELECT * FROM media_uploads")
+    media_by_title = {
+        _normalize_media_title(row["title"]): _row_to_media(row)
+        for row in rows
+    }
+
+    updated_programs: List[Dict[str, object]] = []
+    unmatched_programs: List[str] = []
+
+    for program in programs:
+        title = str(program.get("program_title") or "").strip()
+        if not title:
+            continue
+        normalized = _normalize_media_title(title)
+        media = media_by_title.get(normalized)
+        if not media:
+            unmatched_programs.append(title)
+            continue
+
+        analytics_payload = {**program}
+        merged = {**media, "analyticsData": analytics_payload}
+        update_media(media["id"], {"analyticsData": analytics_payload})
+        media_by_title[normalized] = merged
+        updated_programs.append({"mediaId": media["id"], "title": media["title"]})
+
+    return {
+        "updatedCount": len(updated_programs),
+        "updatedPrograms": updated_programs,
+        "unmatchedPrograms": unmatched_programs,
+    }
+
+
 def delete_media(media_id: str) -> bool:
+    execute("DELETE FROM media_files WHERE media_id = ?", (media_id,))
     execute("DELETE FROM media_uploads WHERE id = ?", (media_id,))
     return True
 
@@ -596,13 +664,16 @@ def _row_to_media(row) -> Dict[str, object]:
         "title": row["title"],
         "fileName": row["file_name"],
         "fileSize": row["file_size"],
-        "duration": row["duration"],
+        "duration": int(row["duration"]) if row["duration"] is not None else None,
         "status": row["status"],
         "uploadProgress": row["upload_progress"],
         "transcodingProgress": row["transcoding_progress"],
         "metadata": json_load(row["metadata"]) or {},
         "uploadedAt": row["uploaded_at"],
         "thumbnailUrl": row["thumbnail_url"],
+        "transcription": row["transcription"],
+        "transcriptionSource": row["transcription_source"],
+        "analyticsData": json_load(row["analytics_data"]) if "analytics_data" in row.keys() else None,
     }
 
 

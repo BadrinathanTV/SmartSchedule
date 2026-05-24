@@ -152,6 +152,9 @@ class MediaUpload(BaseModel):
     metadata: MediaMetadata
     uploadedAt: str
     thumbnailUrl: Optional[str] = None
+    transcription: Optional[str] = None
+    transcriptionSource: Optional[str] = None
+    analyticsData: Optional[Dict[str, object]] = None
 
 
 class SelfHealingLog(BaseModel):
@@ -250,10 +253,22 @@ class MediaCreateRequest(BaseModel):
 
 class MediaUpdateRequest(BaseModel):
     title: Optional[str] = None
+    fileName: Optional[str] = None
+    fileSize: Optional[int] = None
+    duration: Optional[int] = None
     status: Optional[str] = None
     uploadProgress: Optional[int] = None
     transcodingProgress: Optional[int] = None
     metadata: Optional[MediaMetadata] = None
+    uploadedAt: Optional[str] = None
+    thumbnailUrl: Optional[str] = None
+    transcription: Optional[str] = None
+    transcriptionSource: Optional[str] = None
+    analyticsData: Optional[Dict[str, object]] = None
+
+
+class ProgramAnalyticsImportRequest(BaseModel):
+    programs: List[Dict[str, object]]
 
 
 class UserCreateRequest(BaseModel):

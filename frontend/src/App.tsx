@@ -11,12 +11,13 @@ import {
 import { useAuth, AuthProvider } from './contexts/AuthContext';
 import { LoginPage } from './components/LoginPage';
 import { AdminDashboard } from './components/AdminDashboard';
-import { getMediaUploads, uploadMedia } from './lib/api';
+import { ScheduleBuilder } from './components/ScheduleBuilder';
+import { MediaLibrary } from './components/MediaLibrary';
+import { API_URL, deleteMedia, getMediaUploads, importProgramAnalytics, updateMedia, uploadMedia } from './lib/api';
 import type {
   Content,
   ScheduleSlot,
   SelfHealingLog,
-  RetentionForecast,
   TransitionHotspot,
   NLIntent,
   SimulationResult,
@@ -27,24 +28,220 @@ import type {
   ChannelComparison,
 } from './types';
 import {
-  mockContentCatalog,
   mockSelfHealingLogs,
   channelConfigs,
   weekSchedule,
   channelMetrics,
   channelComparisons,
-  generateRetentionForecast,
   parseNaturalLanguageIntent,
-  transitionScores
 } from './data/mockData';
+import {
+  buildRetentionForecast,
+  buildTransitionScoreMap,
+  buildViewerBehaviorMap,
+} from './lib/schedulerMetrics';
 
 type TabType = 'dashboard' | 'schedule' | 'media' | 'analytics' | 'simulation' | 'settings' | 'admin';
 type ViewMode = 'timeline' | 'grid' | 'list';
 type ScheduleViewMode = 'day' | 'week';
 
+type SchedulerSummary = {
+  scope: string;
+  epochs: number;
+  reward: number;
+  retention: number;
+  watchTime: number;
+  engagement: number;
+  adRevenue: number;
+  diversity: number;
+  novelty: number;
+  penalties: {
+    repetition: number;
+    genre: number;
+    series: number;
+    actors: number;
+    dominance: number;
+    dropoff: number;
+  };
+  appliedConstraints: string[];
+  recommendations: string[];
+};
+type MediaUploadList = MediaUpload[];
+
+type MediaEditForm = {
+  title: string;
+  fileName: string;
+  fileSize: string;
+  duration: string;
+  status: MediaUpload['status'];
+  uploadProgress: string;
+  transcodingProgress: string;
+  description: string;
+  genre: string;
+  rating: string;
+  targetAudience: string;
+  regions: string;
+  tags: string;
+  rightsStart: string;
+  rightsEnd: string;
+  transcription: string;
+  transcriptionSource: string;
+  thumbnailUrl: string;
+  uploadedAt: string;
+};
+
+const parseCsvList = (value: string) => value.split(',').map(item => item.trim()).filter(Boolean);
+
+const toDateTimeLocal = (value: string) => {
+  if (!value) return '';
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T');
+  return normalized.slice(0, 16);
+};
+
+const fromDateTimeLocal = (value: string) => {
+  if (!value) return '';
+  return `${value.replace('T', ' ')}:00`;
+};
+
+const buildMediaEditForm = (media: MediaUpload): MediaEditForm => ({
+  title: media.title,
+  fileName: media.fileName,
+  fileSize: String(media.fileSize),
+  duration: String(media.duration),
+  status: media.status,
+  uploadProgress: String(media.uploadProgress),
+  transcodingProgress: String(media.transcodingProgress),
+  description: media.metadata.description,
+  genre: media.metadata.genre.join(', '),
+  rating: media.metadata.rating,
+  targetAudience: media.metadata.targetAudience.join(', '),
+  regions: media.metadata.regions.join(', '),
+  tags: media.metadata.tags.join(', '),
+  rightsStart: media.metadata.rightsStart || '',
+  rightsEnd: media.metadata.rightsEnd || '',
+  transcription: media.transcription || media.metadata.transcription || '',
+  transcriptionSource: media.transcriptionSource || '',
+  thumbnailUrl: media.thumbnailUrl || '',
+  uploadedAt: toDateTimeLocal(media.uploadedAt),
+});
+
+const parseUploadedGenres = (media: MediaUpload) => {
+  if (media.metadata.genre.length > 0) return media.metadata.genre;
+  if (media.metadata.tags.length > 0) return media.metadata.tags.slice(0, 2);
+  return ['General'];
+};
+
+const deriveProgramMood = (media: MediaUpload) => {
+  const text = [media.title, media.metadata.description, ...media.metadata.genre, ...media.metadata.tags].join(' ').toLowerCase();
+  if (/news|update|report|talk/.test(text)) return ['Informative', 'Timely'];
+  if (/action|sport|high|fast/.test(text)) return ['Energetic', 'Intense'];
+  if (/family|kids|cartoon|fun/.test(text)) return ['Light', 'Upbeat'];
+  if (/holiday|christmas|winter/.test(text)) return ['Festive', 'Heartwarming'];
+  if (/documentary|nature|tech|science/.test(text)) return ['Inspiring', 'Informative'];
+  return ['Balanced', 'Engaging'];
+};
+
+const deriveProgramType = (duration: number): Content['type'] => {
+  if (duration <= 1200) return 'short';
+  if (duration <= 2700) return 'special';
+  if (duration <= 5400) return 'series';
+  return 'movie';
+};
+
+const buildProgramFromUpload = (media: MediaUpload): Content => ({
+  id: media.id,
+  title: media.title,
+  type: deriveProgramType(media.duration),
+  seriesName: media.title,
+  cast: undefined,
+  genre: parseUploadedGenres(media),
+  subgenre: media.metadata.tags.length > 0 ? media.metadata.tags.slice(0, 3) : media.metadata.genre,
+  mood: deriveProgramMood(media),
+  rating: (['G', 'PG', 'PG-13', 'R', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA'].includes(media.metadata.rating)
+    ? media.metadata.rating
+    : 'TV-G') as Content['rating'],
+  duration: media.duration,
+  description: media.metadata.description,
+  embedding: media.title.split('').slice(0, 8).map(char => char.charCodeAt(0) / 255).concat(Array.from({ length: 8 }).fill(0)).slice(0, 8),
+  rightsStart: media.metadata.rightsStart || media.uploadedAt.split(' ')[0],
+  rightsEnd: media.metadata.rightsEnd || media.uploadedAt.split(' ')[0],
+  regions: media.metadata.regions.length > 0 ? media.metadata.regions : ['global'],
+  seasonalTags: media.metadata.tags.filter(tag => /holiday|winter|summer|spring|autumn|fall/i.test(tag)),
+  targetAudience: media.metadata.targetAudience.length > 0 ? media.metadata.targetAudience : ['general audience'],
+  adBreakCount: Math.max(1, Math.round(media.duration / 1800)),
+  completionRate: clampProgramScore(media.duration, media.metadata.genre, media.metadata.targetAudience),
+  avgWatchDuration: Math.max(10, Math.round(media.duration / 90)),
+  thumbnailUrl: media.thumbnailUrl,
+  status: media.status === 'ready' ? 'available' : media.status === 'processing' ? 'processing' : media.status === 'error' ? 'error' : 'scheduled',
+  uploadDate: media.uploadedAt,
+  fileSize: media.fileSize,
+  transcodingStatus: media.transcodingProgress >= 100 ? 'completed' : media.status === 'processing' ? 'in_progress' : media.status === 'error' ? 'failed' : 'pending',
+});
+
+const clampProgramScore = (duration: number, genres: string[], audience: string[]) => {
+  const genreText = genres.join(' ').toLowerCase();
+  const audienceText = audience.join(' ').toLowerCase();
+  const familyBoost = /family|kids|all ages/.test(audienceText) ? 6 : 0;
+  const premiumBoost = /documentary|news|sports|tech/.test(genreText) ? 8 : 0;
+  const durationBoost = duration > 3600 ? 4 : duration > 1800 ? 7 : 5;
+  return Math.min(95, Math.max(58, 68 + familyBoost + premiumBoost + durationBoost - Math.round(duration / 1200)));
+};
+
+const createUploadedScheduleTemplate = (template: WeekSchedule[], programs: Content[]) => {
+  if (programs.length === 0) {
+    return template;
+  }
+
+  const buildEndTime = (startTime: string, duration: number) => {
+    const [hours, minutes] = startTime.split(':').map(Number);
+    const totalMinutes = hours * 60 + minutes + duration;
+    const endHour = Math.floor((totalMinutes % (24 * 60)) / 60);
+    const endMinute = totalMinutes % 60;
+    return `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`;
+  };
+
+  return template.map((day, dayIndex) => ({
+    ...day,
+    slots: day.slots.map((slot, slotIndex) => {
+      const fallbackProgram = programs[(dayIndex * day.slots.length + slotIndex) % programs.length];
+      const program = programs.find(candidate => candidate.id === slot.contentId) || fallbackProgram;
+      const predictedRetention = Math.min(96, Math.max(50, program.completionRate - (slotIndex % 4) * 2));
+      const predictedDropoff = Math.max(4, 100 - predictedRetention);
+      const slotDurationMinutes = Math.max(1, Math.ceil(program.duration / 60));
+
+      return {
+        ...slot,
+        contentId: program.id,
+        startTime: slot.startTime,
+        endTime: buildEndTime(slot.startTime, slotDurationMinutes),
+        predictedRetention,
+        predictedDropoff,
+        confidence: Math.min(0.99, Math.max(0.72, 0.78 + (program.completionRate - 70) / 100)),
+        transitionRisk: slotIndex % 3 === 0 ? 'low' : slotIndex % 3 === 1 ? 'medium' : 'high',
+        adBreaks: [{
+          id: `${slot.id}-ad-1`,
+          position: Math.max(12, Math.round(program.duration / 4)),
+          duration: 180,
+          predictedImpressions: Math.round(program.duration * 120),
+          predictedCompletionRate: Math.min(96, Math.max(72, program.completionRate)),
+          type: 'midroll',
+        }],
+      };
+    }),
+    avgRetention: Math.round(day.slots.reduce((sum, slot) => {
+      const program = programs.find(candidate => candidate.id === slot.contentId) || programs[(dayIndex * day.slots.length) % programs.length];
+      return sum + Math.min(96, Math.max(50, program.completionRate));
+    }, 0) / Math.max(1, day.slots.length)),
+    conflicts: day.slots.filter((_, index) => index % 3 === 2).length,
+  }));
+};
+
 function AppContent() {
   const { user, profile, loading, signOut, isAdmin } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    const storedTab = localStorage.getItem('activeTab');
+    return (storedTab as TabType) || 'dashboard';
+  });
   const [currentTime, setCurrentTime] = useState('14:32:08');
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulationResults, setSimulationResults] = useState<SimulationResult | null>(null);
@@ -61,10 +258,14 @@ function AppContent() {
   const [selfHealingLogs] = useState<SelfHealingLog[]>(mockSelfHealingLogs);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<MediaUpload | null>(null);
+  const [isEditingMedia, setIsEditingMedia] = useState(false);
+  const [mediaEditForm, setMediaEditForm] = useState<MediaEditForm | null>(null);
+  const [mediaEditError, setMediaEditError] = useState<string | null>(null);
   const [mediaUploads, setMediaUploads] = useState<MediaUpload[]>([]);
+  const [analyticsImportMessage, setAnalyticsImportMessage] = useState<string | null>(null);
+  const [analyticsImportError, setAnalyticsImportError] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [uploadSelections, setUploadSelections] = useState<Array<{ file: File; thumbnail: string | null }>>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadForm, setUploadForm] = useState({
     title: '',
@@ -73,8 +274,8 @@ function AppContent() {
     targetAudience: '',
     description: '',
     transcription: '',
+    metadata: '',
   });
-  const [retentionForecast] = useState(generateRetentionForecast);
   const [showEditPanel, setShowEditPanel] = useState(false);
   const [showManualScheduleModal, setShowManualScheduleModal] = useState(false);
   const [editedSlotData, setEditedSlotData] = useState<{
@@ -89,8 +290,17 @@ function AppContent() {
   });
   const channelDropdownRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const analyticsFileInputRef = useRef<HTMLInputElement>(null);
 
   const [scheduleData, setScheduleData] = useState<WeekSchedule[]>(weekSchedule);
+  const [isOptimizingSchedule, setIsOptimizingSchedule] = useState(false);
+  const [schedulerSummary, setSchedulerSummary] = useState<SchedulerSummary | null>(null);
+
+  const uploadedProgramCatalog = useMemo(() => mediaUploads.map(buildProgramFromUpload), [mediaUploads]);
+  const contentMap = useMemo(() => new Map(uploadedProgramCatalog.map(program => [program.id, program] as const)), [uploadedProgramCatalog]);
+  const viewerBehaviorMap = useMemo(() => buildViewerBehaviorMap(mediaUploads), [mediaUploads]);
+  const transitionScoreMap = useMemo(() => buildTransitionScoreMap(uploadedProgramCatalog, mediaUploads), [uploadedProgramCatalog, mediaUploads]);
+  const retentionForecast = useMemo(() => buildRetentionForecast(mediaUploads), [mediaUploads]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -98,6 +308,10 @@ function AppContent() {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('activeTab', activeTab);
+  }, [activeTab]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -109,12 +323,15 @@ function AppContent() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const loadMediaUploads = useCallback(async () => {
+  const loadMediaUploads = useCallback(async (): Promise<MediaUploadList> => {
     try {
       const data = await getMediaUploads();
-      setMediaUploads(data as MediaUpload[]);
+      const uploads = data as MediaUpload[];
+      setMediaUploads(uploads);
+      return uploads;
     } catch (error) {
       console.error('Error loading media uploads:', error);
+      return [];
     }
   }, []);
 
@@ -122,55 +339,300 @@ function AppContent() {
     loadMediaUploads();
   }, [loadMediaUploads]);
 
-  const handleFileSelect = useCallback((file: File | null) => {
-    if (!file) return;
-    setUploadFile(file);
-    setUploadError(null);
-    setUploadForm(prev => ({
-      ...prev,
-      title: prev.title || file.name.replace(/\.[^/.]+$/, ''),
-    }));
+  useEffect(() => {
+    if (uploadedProgramCatalog.length === 0) {
+      return;
+    }
+
+    setScheduleData(prev => createUploadedScheduleTemplate(prev, uploadedProgramCatalog));
+  }, [uploadedProgramCatalog]);
+
+  const generateVideoThumbnail = useCallback(async (file: File) => {
+    return new Promise<string | null>((resolve) => {
+      const video = document.createElement('video');
+      const url = URL.createObjectURL(file);
+      video.preload = 'metadata';
+      video.muted = true;
+      video.playsInline = true;
+
+      const cleanup = () => {
+        URL.revokeObjectURL(url);
+        video.remove();
+      };
+
+      video.onloadedmetadata = () => {
+        const duration = Number.isFinite(video.duration) ? video.duration : 0;
+        const seekTime = duration > 0 ? Math.max(0.1, Math.min(1, duration * 0.1)) : 0;
+        video.currentTime = seekTime;
+      };
+
+      video.onseeked = () => {
+        const canvas = document.createElement('canvas');
+        const width = video.videoWidth || 1280;
+        const height = video.videoHeight || 720;
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        if (!context) {
+          cleanup();
+          resolve(null);
+          return;
+        }
+        context.drawImage(video, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        cleanup();
+        resolve(dataUrl);
+      };
+
+      video.onerror = () => {
+        cleanup();
+        resolve(null);
+      };
+
+      video.src = url;
+      video.load();
+    });
   }, []);
 
+  const handleFileSelect = useCallback(async (files: File[] | FileList | null) => {
+    if (!files || (Array.isArray(files) && files.length === 0) || (!Array.isArray(files) && files.length === 0)) {
+      setUploadSelections([]);
+      return;
+    }
+
+    const fileList = Array.isArray(files) ? files : Array.from(files);
+    setUploadError(null);
+    if (fileList.length === 1) {
+      setUploadForm(prev => ({
+        ...prev,
+        title: prev.title || fileList[0].name.replace(/\.[^/.]+$/, ''),
+      }));
+    }
+
+    const selections = await Promise.all(
+      fileList.map(async (file) => ({
+        file,
+        thumbnail: await generateVideoThumbnail(file),
+      })),
+    );
+    setUploadSelections(selections);
+  }, [generateVideoThumbnail]);
+
   const handleUploadSubmit = useCallback(async () => {
-    if (!uploadFile) {
+    if (uploadSelections.length === 0) {
       setUploadError('Please select a video file to upload.');
       return;
     }
-    setIsUploading(true);
     setUploadError(null);
-    try {
-      const uploaded = await uploadMedia(uploadFile, {
-        title: uploadForm.title || uploadFile.name,
+    const submittedAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const parsedGenre = uploadForm.genre
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean);
+    const parsedAudience = uploadForm.targetAudience
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean);
+
+    const tempItems = uploadSelections.map(({ file, thumbnail }, index) => ({
+      id: `local-${Date.now()}-${index}`,
+      title: uploadSelections.length === 1 && uploadForm.title
+        ? uploadForm.title
+        : file.name.replace(/\.[^/.]+$/, ''),
+      fileName: file.name,
+      fileSize: file.size,
+      duration: 0,
+      status: 'uploading' as const,
+      uploadProgress: 0,
+      transcodingProgress: 0,
+      metadata: {
+        description: uploadForm.description,
+        genre: parsedGenre,
+        rating: uploadForm.rating,
+        transcription: uploadForm.transcription || undefined,
+        targetAudience: parsedAudience,
+        regions: [],
+        tags: [],
+      },
+      uploadedAt: submittedAt,
+      thumbnailUrl: thumbnail || undefined,
+    }));
+
+    setMediaUploads(prev => [...tempItems, ...prev]);
+    setShowUploadModal(false);
+    setUploadSelections([]);
+    setUploadForm({
+      title: '',
+      genre: '',
+      rating: 'TV-G',
+      targetAudience: '',
+      description: '',
+      transcription: '',
+      metadata: '',
+    });
+
+    uploadSelections.forEach(({ file, thumbnail }, index) => {
+      const tempId = tempItems[index].id;
+      uploadMedia(file, {
+        title: uploadSelections.length === 1 && uploadForm.title
+          ? uploadForm.title
+          : file.name,
         description: uploadForm.description,
         genre: uploadForm.genre,
         rating: uploadForm.rating,
         targetAudience: uploadForm.targetAudience,
         transcription: uploadForm.transcription,
-      });
-      setMediaUploads(prev => [uploaded as MediaUpload, ...prev]);
-      setShowUploadModal(false);
-      setUploadFile(null);
-      setUploadForm({
-        title: '',
-        genre: '',
-        rating: 'TV-G',
-        targetAudience: '',
-        description: '',
-        transcription: '',
-      });
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : 'Upload failed');
-    } finally {
-      setIsUploading(false);
-    }
-  }, [uploadFile, uploadForm]);
+        thumbnailUrl: thumbnail || undefined,
+      })
+        .then((uploaded) => {
+          setMediaUploads(prev => prev.map(item => (item.id === tempId ? uploaded as MediaUpload : item)));
+        })
+        .catch((error) => {
+          console.error('Upload failed:', error);
+          setMediaUploads(prev => prev.map(item => (
+            item.id === tempId ? { ...item, status: 'error' } : item
+          )));
+        });
+    });
+  }, [uploadSelections, uploadForm]);
 
-  const contentMap = useMemo(() => {
-    const map = new Map<string, Content>();
-    mockContentCatalog.forEach(c => map.set(c.id, c));
-    return map;
+  const handleDeleteMedia = useCallback(async (mediaId: string) => {
+    try {
+      await deleteMedia(mediaId);
+      setMediaUploads(prev => prev.filter(item => item.id !== mediaId));
+      if (selectedMedia?.id === mediaId) {
+        setSelectedMedia(null);
+        setMediaEditForm(null);
+        setMediaEditError(null);
+        setIsEditingMedia(false);
+      }
+    } catch (error) {
+      console.error('Failed to delete media:', error);
+    }
+  }, [selectedMedia]);
+
+  const handleAnalyticsImport = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    const file = files[0];
+    setAnalyticsImportError(null);
+    setAnalyticsImportMessage(null);
+
+    try {
+      const parsed = JSON.parse(await file.text()) as { programs?: Array<Record<string, unknown>> };
+      if (!Array.isArray(parsed.programs) || parsed.programs.length === 0) {
+        throw new Error('Analytics file must contain a non-empty programs array.');
+      }
+
+      const result = await importProgramAnalytics({ programs: parsed.programs });
+      const refreshedUploads = await loadMediaUploads();
+
+      if (selectedMedia) {
+        const refreshedSelected = refreshedUploads.find(item => item.id === selectedMedia.id);
+        if (refreshedSelected) {
+          setSelectedMedia(refreshedSelected);
+          if (isEditingMedia) {
+            setMediaEditForm(buildMediaEditForm(refreshedSelected));
+          }
+        }
+      }
+
+      setAnalyticsImportMessage(`Imported analytics for ${result.updatedCount} program(s).`);
+    } catch (error) {
+      console.error('Failed to import analytics:', error);
+      setAnalyticsImportError(error instanceof Error ? error.message : 'Failed to import analytics file.');
+    }
+  }, [isEditingMedia, loadMediaUploads, selectedMedia]);
+
+  const openMediaViewer = useCallback((media: MediaUpload) => {
+    setSelectedMedia(media);
+    setMediaEditForm(buildMediaEditForm(media));
+    setMediaEditError(null);
+    setIsEditingMedia(false);
   }, []);
+
+  const openMediaEditor = useCallback((media: MediaUpload) => {
+    setSelectedMedia(media);
+    setMediaEditForm(buildMediaEditForm(media));
+    setMediaEditError(null);
+    setIsEditingMedia(true);
+  }, []);
+
+  const closeMediaModal = useCallback(() => {
+    setSelectedMedia(null);
+    setMediaEditForm(null);
+    setMediaEditError(null);
+    setIsEditingMedia(false);
+  }, []);
+
+  const saveMediaEdits = useCallback(async () => {
+    if (!selectedMedia || !mediaEditForm) return;
+
+    const nextMedia: MediaUpload = {
+      ...selectedMedia,
+      title: mediaEditForm.title.trim() || selectedMedia.title,
+      fileName: mediaEditForm.fileName.trim() || selectedMedia.fileName,
+      fileSize: Number.isFinite(Number(mediaEditForm.fileSize)) ? Number(mediaEditForm.fileSize) : selectedMedia.fileSize,
+      duration: Number.isFinite(Number(mediaEditForm.duration)) ? Number(mediaEditForm.duration) : selectedMedia.duration,
+      status: mediaEditForm.status,
+      uploadProgress: Number.isFinite(Number(mediaEditForm.uploadProgress)) ? Number(mediaEditForm.uploadProgress) : selectedMedia.uploadProgress,
+      transcodingProgress: Number.isFinite(Number(mediaEditForm.transcodingProgress)) ? Number(mediaEditForm.transcodingProgress) : selectedMedia.transcodingProgress,
+      metadata: {
+        ...selectedMedia.metadata,
+        description: mediaEditForm.description,
+        genre: parseCsvList(mediaEditForm.genre),
+        rating: mediaEditForm.rating,
+        targetAudience: parseCsvList(mediaEditForm.targetAudience),
+        regions: parseCsvList(mediaEditForm.regions),
+        tags: parseCsvList(mediaEditForm.tags),
+        rightsStart: mediaEditForm.rightsStart || undefined,
+        rightsEnd: mediaEditForm.rightsEnd || undefined,
+        transcription: mediaEditForm.transcription || undefined,
+      },
+      uploadedAt: fromDateTimeLocal(mediaEditForm.uploadedAt) || selectedMedia.uploadedAt,
+      thumbnailUrl: mediaEditForm.thumbnailUrl.trim() || undefined,
+      transcription: mediaEditForm.transcription || undefined,
+      transcriptionSource: mediaEditForm.transcriptionSource || undefined,
+    };
+
+    setMediaEditError(null);
+
+    if (selectedMedia.id.startsWith('local-')) {
+      setMediaUploads(prev => prev.map(item => (item.id === selectedMedia.id ? nextMedia : item)));
+      setSelectedMedia(nextMedia);
+      setMediaEditForm(buildMediaEditForm(nextMedia));
+      setIsEditingMedia(false);
+      return;
+    }
+
+    try {
+      const updated = await updateMedia(selectedMedia.id, {
+        title: nextMedia.title,
+        fileName: nextMedia.fileName,
+        fileSize: nextMedia.fileSize,
+        duration: nextMedia.duration,
+        status: nextMedia.status,
+        uploadProgress: nextMedia.uploadProgress,
+        transcodingProgress: nextMedia.transcodingProgress,
+        metadata: nextMedia.metadata,
+        uploadedAt: nextMedia.uploadedAt,
+        thumbnailUrl: nextMedia.thumbnailUrl,
+        transcription: nextMedia.transcription,
+        transcriptionSource: nextMedia.transcriptionSource,
+      });
+
+      const normalized = updated as MediaUpload;
+      setMediaUploads(prev => prev.map(item => (item.id === normalized.id ? normalized : item)));
+      setSelectedMedia(normalized);
+      setMediaEditForm(buildMediaEditForm(normalized));
+      setIsEditingMedia(false);
+    } catch (error) {
+      console.error('Failed to save media edits:', error);
+      setMediaEditError('Failed to save media changes.');
+    }
+  }, [mediaEditForm, selectedMedia]);
 
   const handleNLSubmit = useCallback(() => {
     if (!nlInput.trim()) return;
@@ -303,6 +765,448 @@ function AppContent() {
     setShowManualScheduleModal(false);
     setManualScheduleData({ contentId: '', day: '2024-12-24', startTime: '06:00' });
   }, [manualScheduleData, contentMap]);
+
+  const runIntelligentScheduler = useCallback(() => {
+    if (uploadedProgramCatalog.length === 0) {
+      return;
+    }
+
+    setIsOptimizingSchedule(true);
+
+    const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+    const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const parseTimeToMinutes = (time: string) => {
+      const [hours, minutes] = time.split(':').map(Number);
+      return hours * 60 + (minutes || 0);
+    };
+    const getSeason = (dateString: string) => {
+      const month = Number(dateString.split('-')[1]);
+      if ([12, 1, 2].includes(month)) return 'winter';
+      if ([3, 4, 5].includes(month)) return 'spring';
+      if ([6, 7, 8].includes(month)) return 'summer';
+      return 'autumn';
+    };
+    const getDayPart = (time: string) => {
+      const hour = Number(time.split(':')[0]);
+      if (hour >= 6 && hour < 12) return 'morning';
+      if (hour >= 12 && hour < 17) return 'afternoon';
+      if (hour >= 17 && hour < 22) return 'evening';
+      return 'late-night';
+    };
+    const getForecastForSlot = (time: string) => {
+      const hour = Number(time.split(':')[0]);
+      return retentionForecast.find(forecast => Number(forecast.timeRange.split(':')[0]) === hour) || retentionForecast[0];
+    };
+    const getTimeStampFromSchedule = (dayDate: string, time: string) => new Date(`${dayDate}T${time}:00`);
+    const getTimeStampFromSlot = (slot: ScheduleSlot) => new Date(`${slot.day}T${slot.startTime}:00`);
+    const getSeriesKey = (content: Content) => {
+      if (content.seriesName) return normalize(content.seriesName);
+      if (content.type !== 'series') return normalize(content.title);
+      return normalize(
+        content.title
+          .replace(/\bS\d+E\d+\b/gi, '')
+          .replace(/\bepisode\s*\d+\b/gi, '')
+          .replace(/\bep\.?\s*\d+\b/gi, ''),
+      );
+    };
+    const getCastKey = (content: Content) => (content.cast || []).map(normalize).filter(Boolean);
+    const overlapCount = (left: string[], right: string[]) => {
+      const rightSet = new Set(right.map(normalize));
+      return left.map(normalize).filter(item => rightSet.has(item)).length;
+    };
+    const getTransitionScore = (previousContentId: string | undefined, nextContent: Content) => {
+      if (!previousContentId) return 72;
+      const score = transitionScoreMap.get(`${previousContentId}->${nextContent.id}`);
+      if (score) return Math.round(score.score * 100);
+      const previousContent = contentMap.get(previousContentId);
+      if (!previousContent) return 68;
+      const sharedGenres = overlapCount(previousContent.genre, nextContent.genre);
+      const sharedMood = overlapCount(previousContent.mood, nextContent.mood);
+      return clamp(60 + sharedGenres * 12 + sharedMood * 8, 30, 96);
+    };
+    const buildAdBreakPlan = (content: Content, slotMinutes: number, predictedViewers: number, predictedRetention: number) => {
+      const breakCount = Math.max(1, Math.min(2, content.adBreakCount >= 5 || slotMinutes >= 60 ? 2 : 1));
+      const firstPosition = Math.max(12, Math.min(30, Math.round(slotMinutes * 0.35)));
+      const secondPosition = Math.max(firstPosition + 10, Math.min(slotMinutes - 8, Math.round(slotMinutes * 0.68)));
+      const baseImpressions = Math.round(predictedViewers * (predictedRetention / 100));
+      return [
+        {
+          id: `ad-${content.id}-${Date.now()}-1`,
+          position: firstPosition,
+          duration: 180,
+          predictedImpressions: Math.round(baseImpressions * 0.42),
+          predictedCompletionRate: clamp(72 + predictedRetention * 0.2, 60, 97),
+          type: 'midroll' as const,
+        },
+        ...(breakCount > 1 ? [{
+          id: `ad-${content.id}-${Date.now()}-2`,
+          position: secondPosition,
+          duration: 180,
+          predictedImpressions: Math.round(baseImpressions * 0.33),
+          predictedCompletionRate: clamp(74 + predictedRetention * 0.18, 60, 98),
+          type: 'midroll' as const,
+        }] : []),
+      ];
+    };
+
+    type PolicyWeights = {
+      retention: number;
+      watchTime: number;
+      engagement: number;
+      adRevenue: number;
+      diversity: number;
+      novelty: number;
+      transition: number;
+    };
+
+    const targetDayIndices = scheduleViewMode === 'week'
+      ? scheduleData.map((_, index) => index)
+      : [selectedDayIndex];
+    const historicalByContent = new Map<string, ScheduleSlot[]>();
+    scheduleData.flatMap(day => day.slots).forEach(slot => {
+      const existing = historicalByContent.get(slot.contentId) || [];
+      historicalByContent.set(slot.contentId, [...existing, slot]);
+    });
+
+    const optimizeOnce = (weights: PolicyWeights) => {
+      const workingDays = scheduleData.map(day => ({
+        ...day,
+        slots: day.slots.map(slot => ({
+          ...slot,
+          adBreaks: slot.adBreaks.map(adBreak => ({ ...adBreak })),
+        })),
+      }));
+
+      const scheduledHistory: ScheduleSlot[] = [];
+      let totalReward = 0;
+      let totalRetention = 0;
+      let totalWatchTime = 0;
+      let totalEngagement = 0;
+      let totalAdRevenue = 0;
+      let totalDiversity = 0;
+      let totalNovelty = 0;
+      let repetitionPenalty = 0;
+      let genrePenalty = 0;
+      let seriesPenalty = 0;
+      let actorPenalty = 0;
+      let dominancePenalty = 0;
+      let dropoffPenalty = 0;
+
+      const appliedConstraints = new Set<string>();
+      const recommendations = new Set<string>();
+
+      const candidatePool = uploadedProgramCatalog;
+
+      for (let dayIndex = 0; dayIndex < workingDays.length; dayIndex += 1) {
+        const day = workingDays[dayIndex];
+        const shouldOptimizeDay = targetDayIndices.includes(dayIndex);
+        const nextSlots: ScheduleSlot[] = [];
+
+        for (let slotIndex = 0; slotIndex < day.slots.length; slotIndex += 1) {
+          const slot = day.slots[slotIndex];
+          const slotStart = parseTimeToMinutes(slot.startTime);
+          const slotEnd = parseTimeToMinutes(slot.endTime);
+          const slotDuration = Math.max(1, slotEnd - slotStart);
+          const forecast = getForecastForSlot(slot.startTime, slot.contentId);
+          const previousContentId = nextSlots[nextSlots.length - 1]?.contentId || scheduledHistory[scheduledHistory.length - 1]?.contentId;
+          const historyWindow = [...scheduledHistory, ...nextSlots].slice(-6);
+          const dayWindow = nextSlots.slice(-3);
+          const currentSeason = getSeason(day.date);
+          const slotDayPart = getDayPart(slot.startTime);
+
+          if (!shouldOptimizeDay) {
+            nextSlots.push(slot);
+            scheduledHistory.push(slot);
+            continue;
+          }
+
+          const scoredCandidates = candidatePool.map(content => {
+            const historicalSlots = historicalByContent.get(content.id) || [];
+            const lastHistoricalSlot = [...historyWindow].reverse().find(historySlot => historySlot.contentId === content.id);
+            const lastHistoricalTime = lastHistoricalSlot ? getTimeStampFromSlot(lastHistoricalSlot) : null;
+            const currentTimeStamp = getTimeStampFromSchedule(day.date, slot.startTime);
+            const hoursSinceRepeat = lastHistoricalTime ? (currentTimeStamp.getTime() - lastHistoricalTime.getTime()) / (1000 * 60 * 60) : Number.POSITIVE_INFINITY;
+            const sameContentHardBlock = hoursSinceRepeat < 4;
+            const seriesKey = getSeriesKey(content);
+            const castKey = getCastKey(content);
+            const recentContentCount = historyWindow.filter(historySlot => historySlot.contentId === content.id).length;
+            const recentGenres = historyWindow.flatMap(historySlot => contentMap.get(historySlot.contentId)?.genre || []);
+            const recentGenreCount = recentGenres.filter(genre => content.genre.some(candidateGenre => normalize(candidateGenre) === normalize(genre))).length;
+            const recentSeriesCount = historyWindow.filter(historySlot => getSeriesKey(contentMap.get(historySlot.contentId) || content) === seriesKey).length;
+            const recentCastCount = historyWindow.filter(historySlot => {
+              const historyContent = contentMap.get(historySlot.contentId);
+              if (!historyContent) return false;
+              return getCastKey(historyContent).some(member => castKey.includes(member));
+            }).length;
+            const dominantGenre = recentGenres.reduce((best, genre) => {
+              const normalizedGenre = normalize(genre);
+              const existingCount = recentGenres.filter(item => normalize(item) === normalizedGenre).length;
+              return existingCount > best.count ? { genre, count: existingCount } : best;
+            }, { genre: '', count: 0 });
+            const dominantGenreShare = historyWindow.length > 0 ? dominantGenre.count / historyWindow.length : 0;
+            const sameGenreStreak = [...dayWindow].reverse().reduce((count, historySlot) => {
+              const historyContent = contentMap.get(historySlot.contentId);
+              if (!historyContent) return count;
+              const overlapsGenre = historyContent.genre.some(historyGenre => content.genre.some(candidateGenre => normalize(historyGenre) === normalize(candidateGenre)));
+              return overlapsGenre ? count + 1 : count;
+            }, 0);
+
+            if (sameContentHardBlock) {
+              return {
+                blocked: true,
+                score: Number.NEGATIVE_INFINITY,
+                predictedRetention: 0,
+                predictedWatchTime: 0,
+                predictedEngagement: 0,
+                predictedAdRevenue: 0,
+                predictedNovelty: 0,
+                predictedDiversity: 0,
+                repetitionPenalty: 100,
+                genrePenalty: 0,
+                seriesPenalty: 0,
+                actorPenalty: 0,
+                dominancePenalty: 0,
+                dropoffPenalty: 0,
+                transitionRisk: 'high' as const,
+                confidence: 0,
+                adBreaks: [],
+              };
+            }
+
+            const viewerBehavior = viewerBehaviorMap.get(content.id);
+            const historicalRetention = historicalSlots.length > 0
+              ? historicalSlots.reduce((sum, historySlot) => sum + historySlot.predictedRetention, 0) / historicalSlots.length
+              : null;
+            const historicalWatchTime = viewerBehavior?.avgWatchDuration || content.avgWatchDuration;
+            const behaviorRetention = viewerBehavior
+              ? (viewerBehavior.retentionCurve.reduce((sum, value) => sum + value, 0) / viewerBehavior.retentionCurve.length) * 100
+              : null;
+            const baseRetention = historicalRetention ?? behaviorRetention ?? content.completionRate;
+            const targetTokens = selectedChannel.targetAudience.split(',').map(item => normalize(item)).filter(Boolean);
+            const targetAudienceOverlap = content.targetAudience.filter(audience => targetTokens.some(target => audience.toLowerCase().includes(target) || target.includes(normalize(audience)))).length;
+            const audienceFit = clamp(52 + targetAudienceOverlap * 14 + (content.genre.some(genre => normalize(genre) === normalize(selectedChannel.primaryGenre)) ? 12 : 0), 20, 100);
+            const timeFit = clamp(
+              slotDayPart === 'evening' ? (content.genre.some(genre => /action|drama|holiday|reality/i.test(genre)) ? 92 : 68)
+              : slotDayPart === 'morning' ? (content.genre.some(genre => /news|documentary|kids|family/i.test(genre)) ? 91 : 62)
+              : slotDayPart === 'afternoon' ? (content.genre.some(genre => /documentary|tech|family|reality/i.test(genre)) ? 88 : 64)
+              : (content.type === 'short' || content.genre.some(genre => /tech|reality/i.test(genre)) ? 84 : 58),
+              20,
+              100,
+            );
+            const seasonFit = clamp(
+              content.seasonalTags.some(tag => normalize(tag).includes(currentSeason))
+                ? 96
+                : currentSeason === 'winter' && content.genre.some(genre => /holiday|christmas/i.test(genre))
+                  ? 94
+                  : currentSeason === 'summer' && content.genre.some(genre => /family|sports/i.test(genre))
+                    ? 84
+                    : 64,
+              20,
+              100,
+            );
+            const durationFit = clamp(100 - Math.abs(content.duration - slotDuration) * 2, 0, 100);
+            const transitionBonus = getTransitionScore(previousContentId, content);
+            const forecastRetention = forecast.predictedRetention;
+            const forecastViewers = forecast.predictedViewers;
+            const engagementSignal = clamp((forecastViewers / 6000) + (viewerBehavior?.peakConcurrency || 0) / 6000 + (durationFit * 0.2), 0, 100);
+            const adRevenueSignal = clamp(((forecastViewers * Math.max(1, content.adBreakCount)) / 4200) * (content.completionRate / 100), 0, 100);
+            const noveltyScore = clamp(100 - recentContentCount * 32 - recentGenreCount * 8 - recentSeriesCount * 18 - recentCastCount * 16, 0, 100);
+            const diversityScore = clamp(100 - dominantGenreShare * 120 - Math.max(0, sameGenreStreak - 1) * 18, 0, 100);
+            const repetitionPenaltyScore = recentContentCount > 0 ? 100 : 0;
+            const genrePenaltyScore = sameGenreStreak >= 2 ? 22 * sameGenreStreak : 0;
+            const seriesPenaltyScore = recentSeriesCount > 0 ? 20 * recentSeriesCount : 0;
+            const actorPenaltyScore = recentCastCount > 0 ? 18 * recentCastCount : 0;
+            const dominancePenaltyScore = dominantGenreShare > 0.4 ? (dominantGenreShare - 0.4) * 120 : 0;
+            const dropoffPenaltyScore = clamp(100 - baseRetention, 0, 60);
+
+            const totalScore = (
+              weights.retention * ((baseRetention + forecastRetention + audienceFit) / 3)
+              + weights.watchTime * clamp((historicalWatchTime / Math.max(1, content.duration)) * 100, 0, 100)
+              + weights.engagement * engagementSignal
+              + weights.adRevenue * adRevenueSignal
+              + weights.diversity * diversityScore
+              + weights.novelty * noveltyScore
+              + weights.transition * transitionBonus
+              - repetitionPenaltyScore
+              - genrePenaltyScore
+              - seriesPenaltyScore
+              - actorPenaltyScore
+              - dominancePenaltyScore
+              - dropoffPenaltyScore
+            );
+
+            return {
+              content,
+              blocked: false,
+              score: totalScore,
+              predictedRetention: clamp((baseRetention * 0.45) + (forecastRetention * 0.25) + (audienceFit * 0.15) + (durationFit * 0.15), 45, 98),
+              predictedWatchTime: historicalWatchTime,
+              predictedEngagement: engagementSignal,
+              predictedAdRevenue: adRevenueSignal,
+              predictedNovelty: noveltyScore,
+              predictedDiversity: diversityScore,
+              repetitionPenalty: repetitionPenaltyScore,
+              genrePenalty: genrePenaltyScore,
+              seriesPenalty: seriesPenaltyScore,
+              actorPenalty: actorPenaltyScore,
+              dominancePenalty: dominancePenaltyScore,
+              dropoffPenalty: dropoffPenaltyScore,
+              transitionRisk: totalScore >= 72 ? 'low' as const : totalScore >= 58 ? 'medium' as const : 'high' as const,
+              confidence: clamp((forecast.confidence * 100 + durationFit + diversityScore) / 3, 38, 97),
+              adBreaks: buildAdBreakPlan(content, slotDuration, forecastViewers, clamp((baseRetention * 0.45) + (forecastRetention * 0.25) + (audienceFit * 0.15) + (durationFit * 0.15), 45, 98)),
+            };
+          }).filter(candidate => !candidate.blocked);
+
+          const bestCandidate = scoredCandidates.sort((left, right) => right.score - left.score)[0] || null;
+          const fallbackContent = contentMap.get(slot.contentId) || candidatePool[0];
+          const chosenContent = bestCandidate?.content || fallbackContent;
+          const chosenRetention = bestCandidate?.predictedRetention || clamp(chosenContent?.completionRate || 70, 45, 98);
+          const chosenWatchTime = bestCandidate?.predictedWatchTime || chosenContent?.avgWatchDuration || slotDuration;
+          const chosenEngagement = bestCandidate?.predictedEngagement || 55;
+          const chosenAdRevenue = bestCandidate?.predictedAdRevenue || 40;
+          const chosenNovelty = bestCandidate?.predictedNovelty || 50;
+          const chosenDiversity = bestCandidate?.predictedDiversity || 50;
+
+          const scheduledSlot: ScheduleSlot = {
+            ...slot,
+            contentId: chosenContent?.id || slot.contentId,
+            predictedRetention: Math.round(chosenRetention),
+            predictedDropoff: Math.round(100 - chosenRetention),
+            confidence: (bestCandidate?.confidence || slot.confidence) / 100,
+            transitionRisk: bestCandidate?.transitionRisk || slot.transitionRisk,
+            adBreaks: bestCandidate?.adBreaks || slot.adBreaks,
+            isEdited: true,
+          };
+
+          nextSlots.push(scheduledSlot);
+          scheduledHistory.push(scheduledSlot);
+
+          totalRetention += chosenRetention;
+          totalWatchTime += chosenWatchTime;
+          totalEngagement += chosenEngagement;
+          totalAdRevenue += chosenAdRevenue;
+          totalNovelty += chosenNovelty;
+          totalDiversity += chosenDiversity;
+          totalReward += bestCandidate?.score || 0;
+          repetitionPenalty += bestCandidate?.repetitionPenalty || 0;
+          genrePenalty += bestCandidate?.genrePenalty || 0;
+          seriesPenalty += bestCandidate?.seriesPenalty || 0;
+          actorPenalty += bestCandidate?.actorPenalty || 0;
+          dominancePenalty += bestCandidate?.dominancePenalty || 0;
+          dropoffPenalty += bestCandidate?.dropoffPenalty || 0;
+
+          if ((bestCandidate?.repetitionPenalty || 0) > 0) {
+            appliedConstraints.add('Repeat cap applied');
+          }
+          if ((bestCandidate?.genrePenalty || 0) > 0) {
+            appliedConstraints.add('Genre balance enforced');
+          }
+          if ((bestCandidate?.seriesPenalty || 0) > 0) {
+            appliedConstraints.add('Series repetition penalized');
+          }
+          if ((bestCandidate?.actorPenalty || 0) > 0) {
+            appliedConstraints.add('Actor repetition penalized');
+          }
+          if ((bestCandidate?.dominancePenalty || 0) > 0) {
+            appliedConstraints.add('Dominant content capped');
+          }
+
+          if ((bestCandidate?.predictedNovelty || 0) < 55) {
+            recommendations.add('Rotate in fresher programs to preserve novelty across the daypart.');
+          }
+          if ((bestCandidate?.predictedDiversity || 0) < 60) {
+            recommendations.add('Increase genre contrast in the next block to avoid audience fatigue.');
+          }
+          if ((bestCandidate?.predictedAdRevenue || 0) > 65) {
+            recommendations.add('Keep the current ad load in high-retention slots to maximize revenue.');
+          }
+        }
+
+        const updatedAvgRetention = nextSlots.length > 0
+          ? nextSlots.reduce((sum, slot) => sum + slot.predictedRetention, 0) / nextSlots.length
+          : day.avgRetention;
+        const updatedConflicts = nextSlots.filter(slot => slot.transitionRisk === 'high').length;
+
+        workingDays[dayIndex] = {
+          ...day,
+          slots: nextSlots,
+          avgRetention: Math.round(updatedAvgRetention),
+          conflicts: updatedConflicts,
+        };
+
+      }
+
+      const scheduledCount = Math.max(1, scheduledHistory.length);
+      const summary: SchedulerSummary = {
+        scope: scheduleViewMode === 'week' ? 'Full week' : `${scheduleData[selectedDayIndex].day}`,
+        epochs: 1,
+        reward: Math.round(totalReward / scheduledCount),
+        retention: Math.round(totalRetention / scheduledCount),
+        watchTime: Math.round(totalWatchTime / scheduledCount),
+        engagement: Math.round(totalEngagement / scheduledCount),
+        adRevenue: Math.round(totalAdRevenue),
+        diversity: Math.round(totalDiversity / scheduledCount),
+        novelty: Math.round(totalNovelty / scheduledCount),
+        penalties: {
+          repetition: Math.round(repetitionPenalty),
+          genre: Math.round(genrePenalty),
+          series: Math.round(seriesPenalty),
+          actors: Math.round(actorPenalty),
+          dominance: Math.round(dominancePenalty),
+          dropoff: Math.round(dropoffPenalty),
+        },
+        appliedConstraints: Array.from(appliedConstraints),
+        recommendations: Array.from(recommendations),
+      };
+
+      return {
+        schedule: workingDays,
+        summary,
+      };
+    };
+
+    try {
+      const basePolicy: PolicyWeights = {
+        retention: 0.28,
+        watchTime: 0.20,
+        engagement: 0.16,
+        adRevenue: 0.16,
+        diversity: 0.12,
+        novelty: 0.08,
+        transition: 0.10,
+      };
+
+      let policy = { ...basePolicy };
+      let bestResult: { schedule: WeekSchedule[]; summary: SchedulerSummary } | null = null;
+
+      for (let epoch = 0; epoch < 3; epoch += 1) {
+        const result = optimizeOnce(policy);
+        result.summary.epochs = epoch + 1;
+
+        if (!bestResult || result.summary.reward > bestResult.summary.reward) {
+          bestResult = result;
+        }
+
+        const clippedAdvantage = clamp(result.summary.reward / 100 - 0.5, -0.2, 0.2);
+        policy = {
+          retention: clamp(policy.retention + clippedAdvantage * 0.03, 0.18, 0.36),
+          watchTime: clamp(policy.watchTime + clippedAdvantage * 0.02, 0.12, 0.30),
+          engagement: clamp(policy.engagement + clippedAdvantage * 0.02, 0.10, 0.25),
+          adRevenue: clamp(policy.adRevenue + clippedAdvantage * 0.02, 0.10, 0.25),
+          diversity: clamp(policy.diversity + (result.summary.diversity < 65 ? 0.02 : -0.005), 0.08, 0.20),
+          novelty: clamp(policy.novelty + (result.summary.novelty < 65 ? 0.015 : -0.005), 0.05, 0.16),
+          transition: clamp(policy.transition + (result.summary.penalties.dropoff > 0 ? 0.01 : -0.002), 0.06, 0.14),
+        };
+      }
+
+      if (bestResult) {
+        setScheduleData(bestResult.schedule);
+        setSchedulerSummary(bestResult.summary);
+      }
+    } finally {
+      setIsOptimizingSchedule(false);
+    }
+  }, [contentMap, retentionForecast, scheduleData, scheduleViewMode, selectedDayIndex, selectedChannel, transitionScoreMap, uploadedProgramCatalog, viewerBehaviorMap]);
 
   const getTransitionColor = (risk: 'low' | 'medium' | 'high') => {
     switch (risk) {
@@ -740,450 +1644,83 @@ function AppContent() {
 
           {/* Schedule Builder */}
           {activeTab === 'schedule' && (
-            <div className="space-y-4 max-w-7xl mx-auto">
-              {/* Controls */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  {(['day', 'week'] as ScheduleViewMode[]).map(mode => (
-                    <button
-                      key={mode}
-                      onClick={() => setScheduleViewMode(mode)}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                        scheduleViewMode === mode
-                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
-                          : 'bg-slate-800 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      {mode.charAt(0).toUpperCase() + mode.slice(1)} View
-                    </button>
-                  ))}
-                </div>
-
-                {/* Natural Language Input */}
-                <div className="flex items-center w-full sm:w-auto gap-2">
-                  <div className="relative flex-1 sm:w-80">
-                    <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cyan-400" />
-                    <input
-                      type="text"
-                      placeholder="Schedule holiday content for evening..."
-                      value={nlInput}
-                      onChange={(e) => setNlInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleNLSubmit()}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
-                    />
-                  </div>
-                  <button
-                    onClick={handleNLSubmit}
-                    className="px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-lg text-sm font-medium whitespace-nowrap"
-                  >
-                    Generate
-                  </button>
-                </div>
-              </div>
-
-              {parsedIntent && (
-                <div className="bg-slate-800/50 rounded-lg border border-slate-700 p-3 flex items-center gap-4 text-xs flex-wrap">
-                  <span className="text-slate-400">Parsed Intent:</span>
-                  <span className="px-2 py-1 bg-cyan-500/20 text-cyan-400 rounded">{parsedIntent.parsed.action}</span>
-                  <div className="flex gap-1 flex-wrap">
-                    {parsedIntent.parsed.constraints.map((c, i) => (
-                      <span key={i} className="px-2 py-1 bg-amber-500/20 text-amber-400 rounded">{c}</span>
-                    ))}
-                  </div>
-                  <span className="text-emerald-400 ml-auto">Confidence: {(parsedIntent.confidence * 100).toFixed(0)}%</span>
-                </div>
-              )}
-
-              {/* Week Days Header */}
-              <div className="flex gap-2 overflow-x-auto pb-2">
-                {scheduleData.map((day, index) => (
-                  <button
-                    key={day.date}
-                    onClick={() => setSelectedDayIndex(index)}
-                    className={`flex-shrink-0 px-4 py-3 rounded-lg border transition-all min-w-[100px] ${
-                      selectedDayIndex === index
-                        ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400'
-                        : 'bg-slate-800/50 border-slate-700/50 text-slate-400 hover:bg-slate-700/50'
-                    }`}
-                  >
-                    <p className="text-sm font-medium">{day.day}</p>
-                    <p className="text-xs text-slate-500">{day.date}</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-xs text-emerald-400">{day.avgRetention}% ret.</span>
-                      {day.conflicts > 0 && (
-                        <span className="text-xs text-rose-400">{day.conflicts} conflicts</span>
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-
-              {/* Schedule Timeline */}
-              <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base font-semibold text-slate-200">
-                    {scheduleData[selectedDayIndex].day} - {scheduleData[selectedDayIndex].date}
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowManualScheduleModal(true)}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-cyan-600 text-white rounded-lg text-xs font-medium hover:bg-cyan-500 transition-colors"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Manual Schedule
-                    </button>
-                    <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 text-slate-300 rounded-lg text-xs font-medium hover:bg-slate-600 transition-colors">
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      Auto-Schedule
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {scheduleData[selectedDayIndex].slots.map((slot, slotIndex) => {
-                    const content = contentMap.get(slot.contentId);
-                    const nextSlot = scheduleData[selectedDayIndex].slots[slotIndex + 1];
-
-                    return (
-                      <div key={slot.id}>
-                        <div className="bg-slate-700/30 rounded-lg p-3 lg:p-4 border border-slate-600/30 hover:border-slate-500/50 transition-colors">
-                          <div className="flex items-center gap-3 lg:gap-4 flex-wrap">
-                            {/* Time */}
-                            <div className="w-16 lg:w-20 flex-shrink-0">
-                              <p className="text-sm font-mono font-medium text-slate-200">{formatTime(slot.startTime)}</p>
-                              <p className="text-xs text-slate-500">{formatTime(slot.endTime)}</p>
-                            </div>
-
-                            {/* Status */}
-                            <div className="flex items-center gap-2">
-                              {getStatusIcon(slot.status)}
-                              <div className={`w-1.5 h-10 rounded-full ${getTransitionColor(slot.transitionRisk)}`} />
-                            </div>
-
-                            {/* Content Info */}
-                            <div className="flex-1 min-w-[150px]">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className="text-sm lg:text-base font-medium text-slate-100">{content?.title}</p>
-                                <span className={`text-xs px-2 py-0.5 rounded ${
-                                  content?.rating?.includes('G') ? 'bg-emerald-500/20 text-emerald-400' :
-                                  content?.rating?.includes('PG') ? 'bg-amber-500/20 text-amber-400' :
-                                  'bg-rose-500/20 text-rose-400'
-                                }`}>
-                                  {content?.rating}
-                                </span>
-                                <span className="text-xs text-slate-400">{content?.duration}m</span>
-                              </div>
-                              <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
-                                <span>{content?.genre.join(', ')}</span>
-                                <span className="hidden sm:inline">•</span>
-                                <span className="hidden sm:inline">{slot.adBreaks.length} ad breaks</span>
-                              </div>
-                            </div>
-
-                            {/* Metrics */}
-                            <div className="flex items-center gap-3 lg:gap-4 flex-wrap sm:flex-nowrap">
-                              <div className="text-center sm:text-right">
-                                <p className="text-xs text-slate-400">Retention</p>
-                                <p className="text-sm font-semibold text-emerald-400">{slot.predictedRetention}%</p>
-                              </div>
-                              <div className="text-center sm:text-right">
-                                <p className="text-xs text-slate-400">Drop-off</p>
-                                <p className="text-sm font-semibold text-rose-400">{slot.predictedDropoff}%</p>
-                              </div>
-                              <div className="text-center sm:text-right hidden md:block">
-                                <p className="text-xs text-slate-400">Confidence</p>
-                                <p className="text-sm font-semibold text-cyan-400">{(slot.confidence * 100).toFixed(0)}%</p>
-                              </div>
-                            </div>
-
-                            {/* Actions */}
-                            <button
-                              onClick={() => handleSlotEdit(slot)}
-                              className="p-2 rounded-lg bg-slate-600/50 hover:bg-slate-500 transition-colors flex-shrink-0"
-                            >
-                              <Edit className="w-4 h-4 text-slate-300" />
-                            </button>
-                          </div>
-
-                          {/* Individual Stats */}
-                          <div className="mt-3 pt-3 border-t border-slate-600/30 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                            <div>
-                              <p className="text-slate-400">Avg Watch Duration</p>
-                              <p className="text-slate-200 font-medium">{content?.avgWatchDuration || Math.ceil(content!.duration * 0.7)}m</p>
-                            </div>
-                            <div>
-                              <p className="text-slate-400">Completion Rate</p>
-                              <p className="text-slate-200 font-medium">{content?.completionRate || 75}%</p>
-                            </div>
-                            <div>
-                              <p className="text-slate-400">Target Audience</p>
-                              <p className="text-slate-200 font-medium truncate">{content?.targetAudience[0]}</p>
-                            </div>
-                            <div>
-                              <p className="text-slate-400">Mood</p>
-                              <p className="text-slate-200 font-medium">{content?.mood[0]}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+            <ScheduleBuilder
+              uploadedProgramCatalog={uploadedProgramCatalog}
+              scheduleData={scheduleData}
+              selectedDayIndex={selectedDayIndex}
+              onSelectedDayIndexChange={setSelectedDayIndex}
+              scheduleViewMode={scheduleViewMode}
+              onScheduleViewModeChange={setScheduleViewMode}
+              nlInput={nlInput}
+              onNlInputChange={setNlInput}
+              onGenerateIntent={handleNLSubmit}
+              parsedIntent={parsedIntent}
+              onRunScheduler={runIntelligentScheduler}
+              isOptimizingSchedule={isOptimizingSchedule}
+              schedulerSummary={schedulerSummary}
+              formatTime={formatTime}
+              getStatusIcon={getStatusIcon}
+              getTransitionColor={getTransitionColor}
+              onSlotEdit={handleSlotEdit}
+              showEditWarning={showEditWarning}
+              editingSlot={editingSlot}
+              onCancelEdit={cancelEdit}
+              onConfirmEdit={confirmEdit}
+              showEditPanel={showEditPanel}
+              editedSlotData={editedSlotData}
+              onCloseEditPanel={() => {
+                setShowEditPanel(false);
+                setEditingSlot(null);
+                setEditedSlotData(null);
+              }}
+              onEditedSlotDataChange={setEditedSlotData}
+              onSaveSlotEdit={saveSlotEdit}
+              showManualScheduleModal={showManualScheduleModal}
+              onOpenManualScheduleModal={() => setShowManualScheduleModal(true)}
+              onCloseManualScheduleModal={() => setShowManualScheduleModal(false)}
+              manualScheduleData={manualScheduleData}
+              onManualScheduleDataChange={setManualScheduleData}
+              onManualScheduleSubmit={handleManualSchedule}
+            />
           )}
 
           {/* Media Upload */}
           {activeTab === 'media' && (
-            <div className="space-y-4 max-w-7xl mx-auto">
-              {/* Upload Controls */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-100">Media Library</h2>
-                  <p className="text-sm text-slate-400">Upload, manage, and organize your video content</p>
-                </div>
-                <button
-                  onClick={() => setShowUploadModal(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-lg text-sm font-medium"
-                >
-                  <UploadCloud className="w-4 h-4" />
-                  Upload Video
-                </button>
-              </div>
-
-              {/* Upload Modal */}
-              {showUploadModal && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-                  <div className="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                    <div className="flex items-center justify-between p-4 border-b border-slate-700">
-                      <h3 className="text-lg font-semibold text-slate-100">Upload New Video</h3>
-                      <button onClick={() => setShowUploadModal(false)} className="p-2 hover:bg-slate-700 rounded-lg">
-                        <X className="w-5 h-5 text-slate-400" />
-                      </button>
-                    </div>
-                    <div className="p-4 space-y-4">
-                      <div
-                        className="border-2 border-dashed border-slate-600 rounded-xl p-8 text-center hover:border-cyan-500/50 transition-colors cursor-pointer"
-                        onClick={() => fileInputRef.current?.click()}
-                        onDragOver={(event) => event.preventDefault()}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          const file = event.dataTransfer.files?.[0] || null;
-                          handleFileSelect(file);
-                        }}
-                      >
-                        <UploadCloud className="w-12 h-12 text-slate-500 mx-auto mb-3" />
-                        <p className="text-sm text-slate-400">Drag and drop video files here, or click to browse</p>
-                        <p className="text-xs text-slate-500 mt-1">MP4, MOV, AVI up to 10GB</p>
-                        {uploadFile && (
-                          <p className="text-xs text-cyan-400 mt-2">Selected: {uploadFile.name}</p>
-                        )}
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          className="hidden"
-                          accept="video/*"
-                          onChange={(event) => handleFileSelect(event.target.files?.[0] || null)}
-                        />
-                      </div>
-                      {uploadError && (
-                        <div className="text-xs text-rose-400">{uploadError}</div>
-                      )}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-xs text-slate-400 mb-1 block">Title</label>
-                          <input
-                            type="text"
-                            value={uploadForm.title}
-                            onChange={(event) => setUploadForm({ ...uploadForm, title: event.target.value })}
-                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200"
-                            placeholder="Video title"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs text-slate-400 mb-1 block">Genre</label>
-                          <input
-                            type="text"
-                            value={uploadForm.genre}
-                            onChange={(event) => setUploadForm({ ...uploadForm, genre: event.target.value })}
-                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200"
-                            placeholder="Documentary, Drama"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs text-slate-400 mb-1 block">Rating</label>
-                          <select
-                            value={uploadForm.rating}
-                            onChange={(event) => setUploadForm({ ...uploadForm, rating: event.target.value })}
-                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200"
-                          >
-                            <option>G</option>
-                            <option>PG</option>
-                            <option>TV-PG</option>
-                            <option>TV-14</option>
-                            <option>TV-MA</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-xs text-slate-400 mb-1 block">Target Audience</label>
-                          <input
-                            type="text"
-                            value={uploadForm.targetAudience}
-                            onChange={(event) => setUploadForm({ ...uploadForm, targetAudience: event.target.value })}
-                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200"
-                            placeholder="adults 25-54"
-                          />
-                        </div>
-                        <div className="sm:col-span-2">
-                          <label className="text-xs text-slate-400 mb-1 block">Description</label>
-                          <textarea
-                            value={uploadForm.description}
-                            onChange={(event) => setUploadForm({ ...uploadForm, description: event.target.value })}
-                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 h-20 resize-none"
-                            placeholder="Video description..."
-                          />
-                        </div>
-                        <div className="sm:col-span-2">
-                          <label className="text-xs text-slate-400 mb-1 block">Transcription (Optional)</label>
-                          <textarea
-                            value={uploadForm.transcription}
-                            onChange={(event) => setUploadForm({ ...uploadForm, transcription: event.target.value })}
-                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 h-20 resize-none"
-                            placeholder="Paste or upload transcription..."
-                          />
-                        </div>
-                      </div>
-                      <div className="flex justify-end gap-3 pt-4 border-t border-slate-700">
-                        <button onClick={() => setShowUploadModal(false)} className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg text-sm font-medium hover:bg-slate-600">Cancel</button>
-                        <button
-                          onClick={handleUploadSubmit}
-                          disabled={isUploading}
-                          className="px-4 py-2 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {isUploading ? 'Uploading...' : 'Upload'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Media Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {mediaUploads.map(media => (
-                  <div key={media.id} className="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden hover:border-slate-600 transition-colors">
-                    <div className="aspect-video bg-slate-900 relative flex items-center justify-center">
-                      <FileVideo className="w-12 h-12 text-slate-600" />
-                      <div className="absolute top-2 right-2">
-                        <span className={`text-xs px-2 py-1 rounded ${
-                          media.status === 'ready' ? 'bg-emerald-500/20 text-emerald-400' :
-                          media.status === 'processing' ? 'bg-cyan-500/20 text-cyan-400' :
-                          media.status === 'error' ? 'bg-rose-500/20 text-rose-400' :
-                          'bg-slate-500/20 text-slate-400'
-                        }`}>
-                          {media.status}
-                        </span>
-                      </div>
-                      {media.status === 'processing' && (
-                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-700">
-                          <div className="h-full bg-cyan-500" style={{ width: `${media.transcodingProgress}%` }} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-4">
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div>
-                          <p className="text-sm font-medium text-slate-100 truncate">{media.title}</p>
-                          <p className="text-xs text-slate-400">{formatDuration(media.duration)} • {formatFileSize(media.fileSize)}</p>
-                        </div>
-                        <div className="flex gap-1">
-                          <button onClick={() => setSelectedMedia(media)} className="p-1.5 rounded-lg hover:bg-slate-700 transition-colors">
-                            <Eye className="w-4 h-4 text-slate-400" />
-                          </button>
-                          <button className="p-1.5 rounded-lg hover:bg-slate-700 transition-colors">
-                            <Edit className="w-4 h-4 text-slate-400" />
-                          </button>
-                          <button className="p-1.5 rounded-lg hover:bg-rose-500/20 transition-colors">
-                            <Trash2 className="w-4 h-4 text-rose-400" />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 mb-3">
-                        {media.metadata.genre.map(g => (
-                          <span key={g} className="text-xs px-2 py-0.5 bg-slate-700 text-slate-300 rounded">{g}</span>
-                        ))}
-                      </div>
-                      <div className="flex justify-between text-xs text-slate-400">
-                        <span>{media.metadata.rating}</span>
-                        <span>Uploaded {media.uploadedAt.split(' ')[0]}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Media Detail Modal */}
-              {selectedMedia && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-                  <div className="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-                    <div className="flex items-center justify-between p-4 border-b border-slate-700">
-                      <h3 className="text-lg font-semibold text-slate-100">{selectedMedia.title}</h3>
-                      <button onClick={() => setSelectedMedia(null)} className="p-2 hover:bg-slate-700 rounded-lg">
-                        <X className="w-5 h-5 text-slate-400" />
-                      </button>
-                    </div>
-                    <div className="p-4 space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-slate-700/30 rounded-lg p-3">
-                          <p className="text-xs text-slate-400">File Name</p>
-                          <p className="text-sm text-slate-200">{selectedMedia.fileName}</p>
-                        </div>
-                        <div className="bg-slate-700/30 rounded-lg p-3">
-                          <p className="text-xs text-slate-400">Duration</p>
-                          <p className="text-sm text-slate-200">{formatDuration(selectedMedia.duration)}</p>
-                        </div>
-                        <div className="bg-slate-700/30 rounded-lg p-3">
-                          <p className="text-xs text-slate-400">File Size</p>
-                          <p className="text-sm text-slate-200">{formatFileSize(selectedMedia.fileSize)}</p>
-                        </div>
-                        <div className="bg-slate-700/30 rounded-lg p-3">
-                          <p className="text-xs text-slate-400">Status</p>
-                          <p className="text-sm text-slate-200 capitalize">{selectedMedia.status}</p>
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-xs text-slate-400 mb-1">Description</p>
-                        <p className="text-sm text-slate-300">{selectedMedia.metadata.description}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-slate-400 mb-1">Target Audience</p>
-                        <div className="flex flex-wrap gap-2">
-                          {selectedMedia.metadata.targetAudience.map(aud => (
-                            <span key={aud} className="text-xs px-2 py-1 bg-cyan-500/20 text-cyan-400 rounded">{aud}</span>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-xs text-slate-400 mb-1">Tags</p>
-                        <div className="flex flex-wrap gap-2">
-                          {selectedMedia.metadata.tags.map(tag => (
-                            <span key={tag} className="text-xs px-2 py-1 bg-slate-700 text-slate-300 rounded">{tag}</span>
-                          ))}
-                        </div>
-                      </div>
-                      {selectedMedia.metadata.transcription && (
-                        <div>
-                          <p className="text-xs text-slate-400 mb-1">Transcription</p>
-                          <div className="bg-slate-700/30 rounded-lg p-3 max-h-32 overflow-y-auto">
-                            <p className="text-xs text-slate-300">{selectedMedia.metadata.transcription}</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+            <MediaLibrary
+              mediaUploads={mediaUploads}
+              selectedMedia={selectedMedia}
+              isEditingMedia={isEditingMedia}
+              mediaEditForm={mediaEditForm}
+              mediaEditError={mediaEditError}
+              showUploadModal={showUploadModal}
+              uploadSelections={uploadSelections}
+              uploadError={uploadError}
+              uploadForm={uploadForm}
+              analyticsImportMessage={analyticsImportMessage}
+              analyticsImportError={analyticsImportError}
+              formatDuration={formatDuration}
+              formatFileSize={formatFileSize}
+              onOpenUploadModal={() => setShowUploadModal(true)}
+              onCloseUploadModal={() => setShowUploadModal(false)}
+              onFileSelect={handleFileSelect}
+              onUploadSubmit={handleUploadSubmit}
+              onUploadFormChange={(next) => setUploadForm(next)}
+              onAnalyticsImport={handleAnalyticsImport}
+              onOpenMediaViewer={openMediaViewer}
+              onOpenMediaEditor={openMediaEditor}
+              onDeleteMedia={(mediaId) => { void handleDeleteMedia(mediaId); }}
+              onCloseMediaModal={closeMediaModal}
+              onStartEditingMedia={() => setIsEditingMedia(true)}
+              onCancelMediaEdit={() => {
+                if (selectedMedia) {
+                  setMediaEditForm(buildMediaEditForm(selectedMedia));
+                }
+                setIsEditingMedia(false);
+                setMediaEditError(null);
+              }}
+              onSaveMediaEdits={() => { void saveMediaEdits(); }}
+              onMediaEditFormChange={(next) => setMediaEditForm(next)}
+            />
           )}
 
           {/* Analytics */}
@@ -1552,382 +2089,6 @@ function AppContent() {
         </main>
       </div>
 
-      {/* Edit Warning Modal */}
-      {showEditWarning && editingSlot && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-xl border border-amber-500/50 w-full max-w-md">
-            <div className="p-4 border-b border-slate-700">
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="w-6 h-6 text-amber-400" />
-                <h3 className="text-lg font-semibold text-slate-100">Schedule Modification Warning</h3>
-              </div>
-            </div>
-            <div className="p-4">
-              <p className="text-sm text-slate-300 mb-4">
-                You are about to manually modify an auto-optimized schedule slot. This change may:
-              </p>
-              <ul className="text-sm text-slate-400 space-y-2 mb-4">
-                <li className="flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <span>Affect predicted retention rates by up to -12%</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <span>Create sequence conflicts with adjacent content</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <span>Require recalculation of ad break placements</span>
-                </li>
-              </ul>
-              <p className="text-xs text-slate-400">
-                Editing slot: <span className="text-cyan-400">{editingSlot.id}</span>
-              </p>
-            </div>
-            <div className="p-4 border-t border-slate-700 flex justify-end gap-3">
-              <button
-                onClick={cancelEdit}
-                className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg text-sm font-medium hover:bg-slate-600"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmEdit}
-                className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-500"
-              >
-                Proceed Anyway
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Slot Panel */}
-      {showEditPanel && editingSlot && editedSlotData && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-xl border border-cyan-500/30 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b border-slate-700">
-              <div className="flex items-center gap-3">
-                <Edit className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-lg font-semibold text-slate-100">Edit Schedule Slot</h3>
-                {editingSlot.isEdited && (
-                  <span className="text-xs px-2 py-1 bg-amber-500/20 text-amber-400 rounded border border-amber-500/30">
-                    Manually Modified
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={() => {
-                  setShowEditPanel(false);
-                  setEditingSlot(null);
-                  setEditedSlotData(null);
-                }}
-                className="p-2 hover:bg-slate-700 rounded-lg"
-              >
-                <X className="w-5 h-5 text-slate-400" />
-              </button>
-            </div>
-            <div className="p-4 space-y-4">
-              {/* Original vs New Comparison */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600/30">
-                  <p className="text-xs text-slate-400 mb-3 font-medium uppercase tracking-wide">Original Schedule</p>
-                  {(() => {
-                    const originalContent = contentMap.get(editingSlot.contentId);
-                    return (
-                      <>
-                        <p className="text-sm font-medium text-slate-300 mb-2">{originalContent?.title || 'Unknown'}</p>
-                        <p className="text-xs text-slate-400">{formatTime(editingSlot.startTime)} - {formatTime(editingSlot.endTime)}</p>
-                        <div className="mt-3 pt-3 border-t border-slate-600/30 grid grid-cols-2 gap-2 text-xs">
-                          <div>
-                            <p className="text-slate-500">Retention</p>
-                            <p className="text-emerald-400">{editingSlot.predictedRetention}%</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-500">Drop-off</p>
-                            <p className="text-rose-400">{editingSlot.predictedDropoff}%</p>
-                          </div>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-                <div className="bg-cyan-500/10 rounded-lg p-4 border border-cyan-500/30">
-                  <p className="text-xs text-cyan-400 mb-3 font-medium uppercase tracking-wide">New Schedule</p>
-                  {(() => {
-                    const newContent = contentMap.get(editedSlotData.contentId);
-                    return (
-                      <>
-                        <p className="text-sm font-medium text-slate-200 mb-2">{newContent?.title || 'Unknown'}</p>
-                        <p className="text-xs text-slate-300">{formatTime(editedSlotData.startTime)} - {formatTime(editedSlotData.endTime)}</p>
-                        <div className="mt-3 pt-3 border-t border-cyan-500/30 grid grid-cols-2 gap-2 text-xs">
-                          <div>
-                            <p className="text-slate-400">Retention</p>
-                            <p className="text-emerald-400">{newContent?.completionRate || '--'}%</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-400">Drop-off</p>
-                            <p className="text-rose-400">{100 - (newContent?.completionRate || 0)}%</p>
-                          </div>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* Edit Form */}
-              <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600/30">
-                <p className="text-xs text-slate-400 mb-4 font-medium">Modify Schedule Settings</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Content / Program</label>
-                    <select
-                      value={editedSlotData.contentId}
-                      onChange={(e) => {
-                        const content = contentMap.get(e.target.target.value);
-                        const endHour = parseInt(editedSlotData.startTime.split(':')[0]) + Math.ceil((content?.duration || 60) / 60);
-                        setEditedSlotData({
-                          ...editedSlotData,
-                          contentId: e.target.target.value,
-                          endTime: `${endHour.toString().padStart(2, '0')}:00`,
-                        });
-                      }}
-                      className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200"
-                    >
-                      {mockContentCatalog.map(content => (
-                        <option key={content.id} value={content.id}>
-                          {content.title} ({content.duration}m)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Start Time</label>
-                    <input
-                      type="time"
-                      value={editedSlotData.startTime}
-                      onChange={(e) => {
-                        const content = contentMap.get(editedSlotData.contentId);
-                        const startHour = parseInt(e.target.target.value.split(':')[0]);
-                        const endHour = startHour + Math.ceil((content?.duration || 60) / 60);
-                        setEditedSlotData({
-                          ...editedSlotData,
-                          startTime: e.target.target.value,
-                          endTime: `${endHour.toString().padStart(2, '0')}:00`,
-                        });
-                      }}
-                      className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">End Time (Auto-calculated)</label>
-                    <input
-                      type="time"
-                      value={editedSlotData.endTime}
-                      disabled
-                      className="w-full bg-slate-600 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-400 cursor-not-allowed"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Content Stats for Selected Program */}
-              {(() => {
-                const selectedContent = contentMap.get(editedSlotData.contentId);
-                return selectedContent ? (
-                  <div className="bg-slate-700/20 rounded-lg p-4 border border-slate-600/20">
-                    <p className="text-xs text-slate-400 mb-3 font-medium">Selected Program Statistics</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                      <div>
-                        <p className="text-slate-500">Genre</p>
-                        <p className="text-slate-200 mt-1">{selectedContent.genre.join(', ')}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Duration</p>
-                        <p className="text-slate-200 mt-1">{selectedContent.duration} minutes</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Rating</p>
-                        <p className="text-slate-200 mt-1">{selectedContent.rating}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Avg Watch</p>
-                        <p className="text-slate-200 mt-1">{selectedContent.avgWatchDuration}m</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Completion Rate</p>
-                        <p className="text-emerald-400 mt-1">{selectedContent.completionRate}%</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Target Audience</p>
-                        <p className="text-slate-200 mt-1">{selectedContent.targetAudience[0]}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Mood</p>
-                        <p className="text-slate-200 mt-1">{selectedContent.mood.join(', ')}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Ad Breaks</p>
-                        <p className="text-slate-200 mt-1">{selectedContent.adBreakCount}</p>
-                      </div>
-                    </div>
-                  </div>
-                ) : null;
-              })()}
-
-              {/* Impact Warning */}
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-amber-400 mb-1">Changes Impact Notice</p>
-                    <p className="text-xs text-slate-300">
-                      Manual modifications will be flagged and may affect AI predictions. The schedule optimizer will recalculate adjacent retention scores and transition risks.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="p-4 border-t border-slate-700 flex justify-between">
-              <button
-                onClick={() => {
-                  setShowEditPanel(false);
-                  setEditingSlot(null);
-                  setEditedSlotData(null);
-                }}
-                className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg text-sm font-medium hover:bg-slate-600"
-              >
-                Cancel Changes
-              </button>
-              <button
-                onClick={saveSlotEdit}
-                className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-500"
-              >
-                <CheckCircle className="w-4 h-4" />
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Manual Schedule Modal */}
-      {showManualScheduleModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-xl border border-cyan-500/30 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b border-slate-700">
-              <div className="flex items-center gap-3">
-                <Plus className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-lg font-semibold text-slate-100">Schedule New Program</h3>
-              </div>
-              <button
-                onClick={() => setShowManualScheduleModal(false)}
-                className="p-2 hover:bg-slate-700 rounded-lg"
-              >
-                <X className="w-5 h-5 text-slate-400" />
-              </button>
-            </div>
-            <div className="p-4 space-y-4">
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">Select Program</label>
-                <select
-                  value={manualScheduleData.contentId}
-                  onChange={(e) => setManualScheduleData({ ...manualScheduleData, contentId: e.target.target.value })}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200"
-                >
-                  <option value="">-- Select a program --</option>
-                  {mockContentCatalog.map(content => (
-                    <option key={content.id} value={content.id}>
-                      {content.title} ({content.duration}m | {content.genre[0]})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">Schedule Date</label>
-                <select
-                  value={manualScheduleData.day}
-                  onChange={(e) => setManualScheduleData({ ...manualScheduleData, day: e.target.target.value })}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200"
-                >
-                  {scheduleData.map(day => (
-                    <option key={day.date} value={day.date}>
-                      {day.day} ({day.date})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">Start Time</label>
-                <input
-                  type="time"
-                  value={manualScheduleData.startTime}
-                  onChange={(e) => setManualScheduleData({ ...manualScheduleData, startTime: e.target.target.value })}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200"
-                />
-              </div>
-
-              {/* Preview */}
-              {manualScheduleData.contentId && (
-                <div className="bg-cyan-500/10 rounded-lg p-4 border border-cyan-500/30">
-                  <p className="text-xs text-cyan-400 mb-3 font-medium uppercase tracking-wide">Schedule Preview</p>
-                  {(() => {
-                    const content = contentMap.get(manualScheduleData.contentId);
-                    const startHour = parseInt(manualScheduleData.startTime.split(':')[0]);
-                    const endHour = startHour + Math.ceil((content?.duration || 60) / 60);
-                    return content ? (
-                      <div className="space-y-2">
-                        <p className="text-sm font-medium text-slate-200">{content.title}</p>
-                        <p className="text-xs text-slate-400">
-                          {formatTime(manualScheduleData.startTime)} - {formatTime(`${endHour.toString().padStart(2, '0')}:00`)}
-                        </p>
-                        <div className="grid grid-cols-2 gap-2 text-xs mt-3 pt-3 border-t border-cyan-500/30">
-                          <div>
-                            <span className="text-slate-400">Duration:</span>{' '}
-                            <span className="text-white">{content.duration}m</span>
-                          </div>
-                          <div>
-                            <span className="text-slate-400">Retention:</span>{' '}
-                            <span className="text-emerald-400">{content.completionRate}%</span>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null;
-                  })()}
-                </div>
-              )}
-
-              <div className="bg-slate-700/30 rounded-lg p-3 text-xs text-slate-400">
-                <p className="flex items-center gap-2">
-                  <Info className="w-4 h-4 text-cyan-400" />
-                  Manual schedules will be auto-optimized and may be adjusted for better transitions.
-                </p>
-              </div>
-            </div>
-            <div className="p-4 border-t border-slate-700 flex justify-end gap-3">
-              <button
-                onClick={() => setShowManualScheduleModal(false)}
-                className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg text-sm font-medium hover:bg-slate-600"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleManualSchedule}
-                disabled={!manualScheduleData.contentId}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${
-                  manualScheduleData.contentId
-                    ? 'bg-cyan-600 text-white hover:bg-cyan-500'
-                    : 'bg-slate-600 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                <Plus className="w-4 h-4" />
-                Add to Schedule
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

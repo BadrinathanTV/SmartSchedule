@@ -14,3 +14,42 @@ Frontend/.env
 *.db
 *.sqlite
 *.sqlite3
+
+# macOS
+.DS_Store
+assets/.DS_Store
+
+# Node / Frontend
+node_modules/
+Frontend/node_modules/
+Frontend/dist/
+Frontend/.vite/
+
+# Environment files
+.env
+.env.*
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+pip-wheel-metadata/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Model and training artifacts
+server/xgboost_model.bst
+
+# Misc
+coverage/
+htmlcov/
+*.log
+*.tmp
+*.bak
+.ipynb_checkpoints/
+smart-scheduler-plan.md
+plan.md
+

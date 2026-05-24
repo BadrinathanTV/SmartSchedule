@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import datetime
 import math
+import re
 from typing import List, Dict, Optional
 
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, Response, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import init_db
@@ -25,12 +26,14 @@ from .models import (
     SelfHealRequest,
     MediaCreateRequest,
     MediaUpdateRequest,
+    ProgramAnalyticsImportRequest,
     UserCreateRequest,
     UserUpdateRequest,
     LoginRequest,
     SignupRequest,
 )
 from . import storage
+from .transcription_service import transcribe_media_bytes
 
 app = FastAPI(title="SmartSchedule Backend", version="1.0.0")
 
@@ -295,14 +298,69 @@ def create_media(payload: MediaCreateRequest) -> Dict[str, object]:
     return storage.create_media(media)
 
 
+import subprocess
+import tempfile
+import os
+
+def _get_video_duration(file_bytes: bytes, file_name: str) -> int:
+    try:
+        with tempfile.NamedTemporaryFile(delete=True, suffix=os.path.splitext(file_name)[1] or ".mp4") as temp_file:
+            temp_file.write(file_bytes)
+            temp_file.flush()
+            cmd = [
+                "ffprobe", "-v", "error", "-show_entries",
+                "format=duration", "-of",
+                "default=noprint_wrappers=1:nokey=1", temp_file.name
+            ]
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+            if result.returncode == 0:
+                # ffprobe returns duration in seconds
+                return int(float(result.stdout.strip()))
+    except Exception as e:
+        print(f"Failed to extract duration: {e}")
+    return 0
+
 def _split_list(value: Optional[str]) -> List[str]:
     if not value:
         return []
     return [item.strip() for item in value.split(',') if item.strip()]
 
 
+def process_transcription_task(media_id: str, file_bytes: bytes, file_name: str):
+    text = transcribe_media_bytes(file_bytes, file_name)
+    if text:
+        media = storage.get_media(media_id)
+        if media:
+            media["transcription"] = text
+            media["transcriptionSource"] = "ai"
+            if "metadata" not in media:
+                media["metadata"] = {}
+            media["metadata"]["transcription"] = text
+            
+            try:
+                from .llm_metadata import generate_metadata_from_transcript
+                llm_meta = generate_metadata_from_transcript(text)
+                if llm_meta:
+                    if not media["metadata"].get("description"):
+                        media["metadata"]["description"] = llm_meta.get("description", "")
+                    if not media["metadata"].get("targetAudience"):
+                        media["metadata"]["targetAudience"] = llm_meta.get("targetAudience", [])
+                    if not media["metadata"].get("tags"):
+                        media["metadata"]["tags"] = llm_meta.get("tags", [])
+                    if not media["metadata"].get("genre"):
+                        media["metadata"]["genre"] = llm_meta.get("genre", [])
+            except Exception as e:
+                print(f"Failed to generate LLM metadata: {e}")
+                
+    # After transcription and metadata generation, mark as ready
+    media["status"] = "ready"
+    media["uploadProgress"] = 100
+    media["transcodingProgress"] = 100
+    storage.update_media(media_id, media)
+
 @app.post("/api/media/upload", response_model=MediaUpload)
 async def upload_media(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     title: Optional[str] = Form(None),
     description: str = Form(''),
@@ -312,28 +370,41 @@ async def upload_media(
     transcription: Optional[str] = Form(None),
     regions: str = Form(''),
     tags: str = Form(''),
+    rightsStart: Optional[str] = Form(None),
+    rightsEnd: Optional[str] = Form(None),
+    thumbnailUrl: Optional[str] = Form(None),
 ) -> Dict[str, object]:
     file_bytes = await file.read()
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    transcription_text = transcription.strip() if transcription else None
+    transcription_source = "user" if transcription_text else None
+    # We will trigger background transcription if not provided
     metadata = {
         "description": description,
         "genre": _split_list(genre),
         "rating": rating,
-        "transcription": transcription,
+        "transcription": transcription_text,
         "targetAudience": _split_list(targetAudience),
         "regions": _split_list(regions),
         "tags": _split_list(tags),
+        "rightsStart": rightsStart,
+        "rightsEnd": rightsEnd,
     }
+    duration = _get_video_duration(file_bytes, file.filename)
+    
     media = {
         "title": title or file.filename,
         "fileName": file.filename,
         "fileSize": len(file_bytes),
-        "duration": 0,
-        "status": "ready",
+        "duration": duration,
+        "status": "processing",
         "uploadProgress": 100,
-        "transcodingProgress": 100,
+        "transcodingProgress": 0,
         "metadata": metadata,
         "uploadedAt": now,
+        "thumbnailUrl": thumbnailUrl,
+        "transcription": transcription_text,
+        "transcriptionSource": transcription_source,
     }
     created = storage.create_media(media)
     storage.create_media_file({
@@ -344,6 +415,10 @@ async def upload_media(
         "blob": file_bytes,
         "created_at": now,
     })
+    
+    if not transcription_text:
+        background_tasks.add_task(process_transcription_task, created["id"], file_bytes, file.filename)
+        
     return created
 
 
@@ -355,10 +430,58 @@ def update_media(media_id: str, payload: MediaUpdateRequest) -> Dict[str, object
     return updated
 
 
+@app.post("/api/media/analytics/import")
+def import_media_analytics(payload: ProgramAnalyticsImportRequest) -> Dict[str, object]:
+    if not payload.programs:
+        raise HTTPException(status_code=400, detail="programs is required")
+    return storage.import_program_analytics(payload.programs)
+
+
 @app.delete("/api/media/{media_id}")
 def delete_media(media_id: str) -> Dict[str, str]:
     storage.delete_media(media_id)
     return {"status": "deleted"}
+
+
+@app.get("/api/media/{media_id}/file")
+def get_media_file(media_id: str, request: Request) -> Response:
+    media_file = storage.get_media_file(media_id)
+    if not media_file:
+        raise HTTPException(status_code=404, detail="Media file not found")
+    blob = media_file["blob"]
+    if isinstance(blob, memoryview):
+        blob = blob.tobytes()
+    total_size = media_file.get("size") or len(blob)
+    media_type = media_file.get("content_type") or "application/octet-stream"
+    file_name = media_file["file_name"]
+    range_header = request.headers.get("range")
+    if range_header:
+        match = re.match(r"bytes=(\d+)-(\d*)", range_header)
+        if match:
+            start = int(match.group(1))
+            end = int(match.group(2)) if match.group(2) else min(start + 1024 * 1024, total_size - 1)
+            end = min(end, total_size - 1)
+            content = blob[start:end + 1]
+            return Response(
+                content=content,
+                status_code=206,
+                media_type=media_type,
+                headers={
+                    "Content-Range": f"bytes {start}-{end}/{total_size}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(len(content)),
+                    "Content-Disposition": f"inline; filename=\"{file_name}\"",
+                },
+            )
+    return Response(
+        content=blob,
+        media_type=media_type,
+        headers={
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(total_size),
+            "Content-Disposition": f"inline; filename=\"{file_name}\"",
+        },
+    )
 
 
 @app.get("/api/admin/daily-analytics")

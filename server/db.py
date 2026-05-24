@@ -144,7 +144,10 @@ def init_db() -> None:
             transcoding_progress INTEGER,
             metadata TEXT,
             uploaded_at TEXT,
-            thumbnail_url TEXT
+            thumbnail_url TEXT,
+            transcription TEXT,
+            transcription_source TEXT,
+            analytics_data TEXT
         )
         """,
         """
@@ -214,7 +217,18 @@ def init_db() -> None:
     with get_connection() as conn:
         for stmt in schema:
             conn.execute(stmt)
+        _ensure_media_upload_columns(conn)
         conn.commit()
+
+
+def _ensure_media_upload_columns(conn: sqlite3.Connection) -> None:
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(media_uploads)")}
+    if "transcription" not in existing:
+        conn.execute("ALTER TABLE media_uploads ADD COLUMN transcription TEXT")
+    if "transcription_source" not in existing:
+        conn.execute("ALTER TABLE media_uploads ADD COLUMN transcription_source TEXT")
+    if "analytics_data" not in existing:
+        conn.execute("ALTER TABLE media_uploads ADD COLUMN analytics_data TEXT")
 
 
 def json_dump(value: object) -> str:

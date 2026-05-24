@@ -2,6 +2,8 @@ export interface Content {
   id: string;
   title: string;
   type: 'movie' | 'series' | 'special' | 'short';
+  seriesName?: string;
+  cast?: string[];
   genre: string[];
   subgenre: string[];
   mood: string[];
@@ -187,6 +189,29 @@ export interface WeekSchedule {
   conflicts: number;
 }
 
+export interface ImportedProgramAnalytics {
+  content_id: string;
+  program_title: string;
+  start_time: string;
+  end_time: string;
+  concurrent_viewers: number;
+  unique_viewers: number;
+  average_watch_duration_minutes: number;
+  audience_retention_curve: number[];
+  drop_off_timestamps: string[];
+  ad_metrics: {
+    impressions: number;
+    completion_rate: number;
+  };
+  viewer_behavior: {
+    entry_points: string[];
+    exit_points: string[];
+  };
+  device_types: Record<string, number>;
+  geographic_regions: Record<string, number>;
+  interactive_ctr: number;
+}
+
 export interface MediaUpload {
   id: string;
   title: string;
@@ -199,6 +224,9 @@ export interface MediaUpload {
   metadata: MediaMetadata;
   uploadedAt: string;
   thumbnailUrl?: string;
+  transcription?: string;
+  transcriptionSource?: 'ai' | 'user';
+  analyticsData?: ImportedProgramAnalytics;
 }
 
 export interface MediaMetadata {
