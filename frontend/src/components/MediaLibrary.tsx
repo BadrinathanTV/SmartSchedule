@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { API_URL } from '../lib/api';
+import type { ChannelConfig } from '../types';
 import type { MediaUpload } from '../types';
 import { Edit, Eye, FileVideo, Trash2, Upload, UploadCloud, X } from 'lucide-react';
 
@@ -45,6 +46,7 @@ type MediaLibraryProps = {
   uploadSelections: Array<{ file: File; thumbnail: string | null }>;
   uploadError: string | null;
   uploadForm: MediaUploadForm;
+  activeChannel: ChannelConfig;
   analyticsImportMessage: string | null;
   analyticsImportError: string | null;
   formatDuration: (value: number) => string;
@@ -75,6 +77,7 @@ export function MediaLibrary({
   uploadSelections,
   uploadError,
   uploadForm,
+  activeChannel,
   analyticsImportMessage,
   analyticsImportError,
   formatDuration,
@@ -149,6 +152,10 @@ export function MediaLibrary({
               </button>
             </div>
             <div className="p-4 space-y-4">
+              <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+                Uploading to <span className="font-semibold">{activeChannel.name}</span>
+                <span className="text-cyan-200/80"> • {activeChannel.primaryGenre} • {activeChannel.targetAudience}</span>
+              </div>
               <div
                 className="border-2 border-dashed border-slate-600 rounded-xl p-6 text-center hover:border-cyan-500/50 transition-colors cursor-pointer"
                 onClick={() => fileInputRef.current?.click()}

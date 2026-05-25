@@ -306,7 +306,7 @@ def create_media(payload: Dict[str, object]) -> Dict[str, object]:
         """
         INSERT INTO media_uploads (
             id, title, file_name, file_size, duration, status, upload_progress,
-            transcoding_progress, metadata, uploaded_at, thumbnail_url,
+            transcoding_progress, metadata, uploaded_at, channel_id, thumbnail_url,
             transcription, transcription_source, analytics_data
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
@@ -321,6 +321,7 @@ def create_media(payload: Dict[str, object]) -> Dict[str, object]:
             payload["transcodingProgress"],
             json_dump(payload["metadata"]),
             payload["uploadedAt"],
+            payload.get("channelId"),
             payload.get("thumbnailUrl"),
             payload.get("transcription"),
             payload.get("transcriptionSource"),
@@ -385,6 +386,7 @@ def update_media(media_id: str, updates: Dict[str, object]) -> Optional[Dict[str
             transcoding_progress = ?,
             metadata = ?,
             uploaded_at = ?,
+            channel_id = ?,
             thumbnail_url = ?,
             transcription = ?,
             transcription_source = ?,
@@ -401,6 +403,7 @@ def update_media(media_id: str, updates: Dict[str, object]) -> Optional[Dict[str
             merged["transcodingProgress"],
             json_dump(merged["metadata"]),
             merged["uploadedAt"],
+            merged.get("channelId"),
             merged.get("thumbnailUrl"),
             merged.get("transcription"),
             merged.get("transcriptionSource"),
@@ -670,6 +673,7 @@ def _row_to_media(row) -> Dict[str, object]:
         "transcodingProgress": row["transcoding_progress"],
         "metadata": json_load(row["metadata"]) or {},
         "uploadedAt": row["uploaded_at"],
+        "channelId": row["channel_id"],
         "thumbnailUrl": row["thumbnail_url"],
         "transcription": row["transcription"],
         "transcriptionSource": row["transcription_source"],

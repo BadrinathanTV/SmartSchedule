@@ -29,6 +29,9 @@ export interface Content {
 export interface ScheduleSlot {
   id: string;
   contentId: string;
+  displayTitle?: string;
+  description?: string;
+  scheduleType?: 'program' | 'live';
   startTime: string;
   endTime: string;
   predictedRetention: number;
@@ -223,6 +226,7 @@ export interface MediaUpload {
   transcodingProgress: number;
   metadata: MediaMetadata;
   uploadedAt: string;
+  channelId?: string;
   thumbnailUrl?: string;
   transcription?: string;
   transcriptionSource?: 'ai' | 'user';

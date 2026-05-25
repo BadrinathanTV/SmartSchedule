@@ -29,6 +29,9 @@ type ManualScheduleData = {
   contentId: string;
   day: string;
   startTime: string;
+  scheduleType: 'program' | 'live';
+  liveTitle: string;
+  liveDescription: string;
 };
 
 type EditedSlotData = {
@@ -109,6 +112,13 @@ export function ScheduleBuilder({
   onManualScheduleSubmit,
 }: ScheduleBuilderProps) {
   const contentMap = buildContentMap(uploadedProgramCatalog);
+  const visibleScheduleData = scheduleViewMode === 'day'
+    ? [scheduleData[selectedDayIndex]].filter(Boolean)
+    : scheduleData;
+  const activeDay = scheduleData[selectedDayIndex];
+  const canSubmitManualSchedule = manualScheduleData.scheduleType === 'program'
+    ? Boolean(manualScheduleData.contentId)
+    : Boolean(manualScheduleData.liveTitle.trim());
 
   return (
     <>
@@ -166,31 +176,46 @@ export function ScheduleBuilder({
 
         {uploadedProgramCatalog.length > 0 ? (
           <>
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              {scheduleData.map((day, index) => (
+            {scheduleViewMode === 'week' ? (
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {scheduleData.map((day, index) => (
+                  <button
+                    key={day.date}
+                    onClick={() => onSelectedDayIndexChange(index)}
+                    className={`flex-shrink-0 px-4 py-3 rounded-lg border transition-all min-w-[100px] ${
+                      selectedDayIndex === index
+                        ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400'
+                        : 'bg-slate-800/50 border-slate-700/50 text-slate-400 hover:bg-slate-700/50'
+                    }`}
+                  >
+                    <p className="text-sm font-medium">{day.day}</p>
+                    <p className="text-xs text-slate-500">{day.date}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-xs text-emerald-400">{day.avgRetention}% ret.</span>
+                      {day.conflicts > 0 && <span className="text-xs text-rose-400">{day.conflicts} conflicts</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-cyan-300">Single Day View</p>
+                  <p className="text-xs text-cyan-100/80">Showing only {activeDay.day} · {activeDay.date}</p>
+                </div>
                 <button
-                  key={day.date}
-                  onClick={() => onSelectedDayIndexChange(index)}
-                  className={`flex-shrink-0 px-4 py-3 rounded-lg border transition-all min-w-[100px] ${
-                    selectedDayIndex === index
-                      ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400'
-                      : 'bg-slate-800/50 border-slate-700/50 text-slate-400 hover:bg-slate-700/50'
-                  }`}
+                  onClick={() => onSelectedDayIndexChange(selectedDayIndex)}
+                  className="text-xs font-medium text-cyan-200 hover:text-white"
                 >
-                  <p className="text-sm font-medium">{day.day}</p>
-                  <p className="text-xs text-slate-500">{day.date}</p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-xs text-emerald-400">{day.avgRetention}% ret.</span>
-                    {day.conflicts > 0 && <span className="text-xs text-rose-400">{day.conflicts} conflicts</span>}
-                  </div>
+                  Refresh day
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
 
             <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-base font-semibold text-slate-200">
-                  {scheduleData[selectedDayIndex].day} - {scheduleData[selectedDayIndex].date}
+                  {activeDay.day} - {activeDay.date}
                 </h3>
                 <div className="flex items-center gap-2">
                   <button
@@ -212,7 +237,7 @@ export function ScheduleBuilder({
               </div>
 
               <div className="space-y-3">
-                {scheduleData[selectedDayIndex].slots.map((slot) => {
+                {visibleScheduleData[0]?.slots.map((slot) => {
                   const content = contentMap.get(slot.contentId);
                   return (
                     <div key={slot.id}>
@@ -230,20 +255,28 @@ export function ScheduleBuilder({
 
                           <div className="flex-1 min-w-[150px]">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <p className="text-sm lg:text-base font-medium text-slate-100">{content?.title}</p>
+                              <p className="text-sm lg:text-base font-medium text-slate-100">
+                                {slot.displayTitle || content?.title || 'Live Stream'}
+                              </p>
+                              {slot.scheduleType === 'live' && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 uppercase tracking-wide">
+                                  Live
+                                </span>
+                              )}
                               <span className={`text-xs px-2 py-0.5 rounded ${
+                                slot.scheduleType === 'live' ? 'bg-cyan-500/20 text-cyan-300' :
                                 content?.rating?.includes('G') ? 'bg-emerald-500/20 text-emerald-400' :
                                 content?.rating?.includes('PG') ? 'bg-amber-500/20 text-amber-400' :
                                 'bg-rose-500/20 text-rose-400'
                               }`}>
-                                {content?.rating}
+                                {slot.scheduleType === 'live' ? 'LIVE' : content?.rating}
                               </span>
-                              <span className="text-xs text-slate-400">{content?.duration}m</span>
+                              <span className="text-xs text-slate-400">{slot.scheduleType === 'live' ? 'Live' : `${content?.duration}m`}</span>
                             </div>
                             <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
-                              <span>{content?.genre.join(', ')}</span>
+                              <span>{slot.scheduleType === 'live' ? 'Live Streaming' : content?.genre.join(', ')}</span>
                               <span className="hidden sm:inline">•</span>
-                              <span className="hidden sm:inline">{slot.adBreaks.length} ad breaks</span>
+                              <span className="hidden sm:inline">{slot.scheduleType === 'live' ? 'Immediate' : `${slot.adBreaks.length} ad breaks`}</span>
                             </div>
                           </div>
 
@@ -598,7 +631,8 @@ export function ScheduleBuilder({
                 <select
                   value={manualScheduleData.contentId}
                   onChange={(event) => onManualScheduleDataChange({ ...manualScheduleData, contentId: event.currentTarget.value })}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200"
+                  disabled={manualScheduleData.scheduleType === 'live'}
+                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 disabled:opacity-60"
                 >
                   <option value="">-- Select a program --</option>
                   {uploadedProgramCatalog.map(content => (
@@ -608,6 +642,44 @@ export function ScheduleBuilder({
                   ))}
                 </select>
               </div>
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">Schedule Type</label>
+                <select
+                  value={manualScheduleData.scheduleType}
+                  onChange={(event) => onManualScheduleDataChange({
+                    ...manualScheduleData,
+                    scheduleType: event.currentTarget.value as ManualScheduleData['scheduleType'],
+                    contentId: event.currentTarget.value === 'live' ? '' : manualScheduleData.contentId,
+                  })}
+                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200"
+                >
+                  <option value="program">Program</option>
+                  <option value="live">Live Streaming</option>
+                </select>
+              </div>
+              {manualScheduleData.scheduleType === 'live' && (
+                <div>
+                  <label className="text-xs text-slate-400 mb-1 block">Live Title</label>
+                  <input
+                    type="text"
+                    value={manualScheduleData.liveTitle}
+                    onChange={(event) => onManualScheduleDataChange({ ...manualScheduleData, liveTitle: event.currentTarget.value })}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200"
+                    placeholder="Live Stream"
+                  />
+                </div>
+              )}
+              {manualScheduleData.scheduleType === 'live' && (
+                <div>
+                  <label className="text-xs text-slate-400 mb-1 block">Live Description</label>
+                  <textarea
+                    value={manualScheduleData.liveDescription}
+                    onChange={(event) => onManualScheduleDataChange({ ...manualScheduleData, liveDescription: event.currentTarget.value })}
+                    className="w-full min-h-[96px] bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200"
+                    placeholder="Describe the live session, guests, topics, or audience interaction."
+                  />
+                </div>
+              )}
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Schedule Date</label>
                 <select
@@ -659,6 +731,17 @@ export function ScheduleBuilder({
                 </div>
               )}
 
+              {manualScheduleData.scheduleType === 'live' && (
+                <div className="bg-cyan-500/10 rounded-lg p-4 border border-cyan-500/30">
+                  <p className="text-xs text-cyan-400 mb-3 font-medium uppercase tracking-wide">Live Preview</p>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-slate-200">{manualScheduleData.liveTitle || 'Live Stream'}</p>
+                    <p className="text-xs text-slate-400">{formatTime(manualScheduleData.startTime)} - Live</p>
+                    <div className="text-xs text-slate-300">{manualScheduleData.liveDescription || 'This will appear immediately as a live slot when added.'}</div>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-slate-700/30 rounded-lg p-3 text-xs text-slate-400">
                 <p className="flex items-center gap-2">
                   <Info className="w-4 h-4 text-cyan-400" />
@@ -670,15 +753,15 @@ export function ScheduleBuilder({
               <button onClick={onCloseManualScheduleModal} className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg text-sm font-medium hover:bg-slate-600">Cancel</button>
               <button
                 onClick={onManualScheduleSubmit}
-                disabled={!manualScheduleData.contentId}
+                disabled={!canSubmitManualSchedule}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${
-                  manualScheduleData.contentId
+                  canSubmitManualSchedule
                     ? 'bg-cyan-600 text-white hover:bg-cyan-500'
                     : 'bg-slate-600 text-slate-400 cursor-not-allowed'
                 }`}
               >
                 <Plus className="w-4 h-4" />
-                Add to Schedule
+                {manualScheduleData.scheduleType === 'live' ? 'Add Live Stream' : 'Add to Schedule'}
               </button>
             </div>
           </div>

@@ -323,6 +323,7 @@ def seed_media_uploads() -> List[Dict[str, object]]:
         {
             "id": "media-001",
             "title": "Christmas in Evergreen",
+            "channelId": "channel-001",
             "fileName": "christmas_evergreen_1080p.mp4",
             "fileSize": 2456000000,
             "duration": 5040,
@@ -343,6 +344,7 @@ def seed_media_uploads() -> List[Dict[str, object]]:
         {
             "id": "media-002",
             "title": "Winter Wonderland Special",
+            "channelId": "channel-001",
             "fileName": "winter_wonderland_2024.mp4",
             "fileSize": 3120000000,
             "duration": 5400,
@@ -362,6 +364,7 @@ def seed_media_uploads() -> List[Dict[str, object]]:
         {
             "id": "media-003",
             "title": "Nature Documentary EP 1",
+            "channelId": "channel-004",
             "fileName": "nature_ep01_4k.mp4",
             "fileSize": 5600000000,
             "duration": 3000,
@@ -381,6 +384,7 @@ def seed_media_uploads() -> List[Dict[str, object]]:
         {
             "id": "media-004",
             "title": "Tech Innovators S1E01",
+            "channelId": "channel-004",
             "fileName": "tech_innovators_s01e01.mp4",
             "fileSize": 1890000000,
             "duration": 2880,

@@ -68,6 +68,15 @@ type SchedulerSummary = {
 };
 type MediaUploadList = MediaUpload[];
 
+type ManualScheduleState = {
+  contentId: string;
+  day: string;
+  startTime: string;
+  scheduleType: 'program' | 'live';
+  liveTitle: string;
+  liveDescription: string;
+};
+
 type MediaEditForm = {
   title: string;
   fileName: string;
@@ -101,6 +110,68 @@ const toDateTimeLocal = (value: string) => {
 const fromDateTimeLocal = (value: string) => {
   if (!value) return '';
   return `${value.replace('T', ' ')}:00`;
+};
+
+const getLocalDateString = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const addDays = (date: Date, days: number) => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+};
+
+const getScheduleDayLabel = (date: Date) => date.toLocaleDateString('en-US', { weekday: 'long' });
+
+const generateRollingSchedule = (template: WeekSchedule[], daysAhead = 5): WeekSchedule[] => {
+  if (template.length === 0) return [];
+
+  const startDate = new Date();
+  return Array.from({ length: daysAhead + 1 }, (_, index) => {
+    const currentDate = addDays(startDate, index);
+    const templateDay = template[index % template.length];
+    const date = getLocalDateString(currentDate);
+
+    return {
+      ...templateDay,
+      day: getScheduleDayLabel(currentDate),
+      date,
+      slots: templateDay.slots.map((slot, slotIndex) => ({
+        ...slot,
+        id: `slot-${date}-${slotIndex}`,
+        day: date,
+        adBreaks: slot.adBreaks.map((adBreak, adIndex) => ({
+          ...adBreak,
+          id: `ad-${date}-${slotIndex}-${adIndex}`,
+        })),
+      })),
+    };
+  });
+};
+
+const scheduleStorageKey = (channelId: string) => `smartschedule:schedule:${channelId}`;
+
+const loadStoredSchedule = (channelId: string, fallback: WeekSchedule[]) => {
+  try {
+    const storedValue = localStorage.getItem(scheduleStorageKey(channelId));
+    if (!storedValue) return fallback;
+    const parsed = JSON.parse(storedValue) as WeekSchedule[];
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const saveStoredSchedule = (channelId: string, schedule: WeekSchedule[]) => {
+  try {
+    localStorage.setItem(scheduleStorageKey(channelId), JSON.stringify(schedule));
+  } catch {
+    // Ignore storage failures and keep the in-memory schedule working.
+  }
 };
 
 const buildMediaEditForm = (media: MediaUpload): MediaEditForm => ({
@@ -178,6 +249,30 @@ const buildProgramFromUpload = (media: MediaUpload): Content => ({
   transcodingStatus: media.transcodingProgress >= 100 ? 'completed' : media.status === 'processing' ? 'in_progress' : media.status === 'error' ? 'failed' : 'pending',
 });
 
+const createUploadFormDefaults = (channel: ChannelConfig) => ({
+  title: '',
+  genre: channel.primaryGenre,
+  rating: channel.ratingLimit,
+  targetAudience: channel.targetAudience,
+  description: '',
+  transcription: '',
+  metadata: '',
+});
+
+const createManualScheduleDefaults = (): ManualScheduleState => ({
+  contentId: '',
+  day: getLocalDateString(),
+  startTime: '06:00',
+  scheduleType: 'program',
+  liveTitle: 'Live Stream',
+  liveDescription: 'A real-time broadcast with live updates, audience interaction, and immediate coverage.',
+});
+
+const normalizeMediaChannel = (media: MediaUpload) => ({
+  ...media,
+  channelId: media.channelId || channelConfigs[0].id,
+});
+
 const clampProgramScore = (duration: number, genres: string[], audience: string[]) => {
   const genreText = genres.join(' ').toLowerCase();
   const audienceText = audience.join(' ').toLowerCase();
@@ -252,7 +347,7 @@ function AppContent() {
   const [showChannelDropdown, setShowChannelDropdown] = useState(false);
   const [nlInput, setNlInput] = useState('');
   const [parsedIntent, setParsedIntent] = useState<NLIntent | null>(null);
-  const [selectedDayIndex, setSelectedDayIndex] = useState(1);
+  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [editingSlot, setEditingSlot] = useState<ScheduleSlot | null>(null);
   const [showEditWarning, setShowEditWarning] = useState(false);
   const [selfHealingLogs] = useState<SelfHealingLog[]>(mockSelfHealingLogs);
@@ -267,15 +362,7 @@ function AppContent() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadSelections, setUploadSelections] = useState<Array<{ file: File; thumbnail: string | null }>>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadForm, setUploadForm] = useState({
-    title: '',
-    genre: '',
-    rating: 'TV-G',
-    targetAudience: '',
-    description: '',
-    transcription: '',
-    metadata: '',
-  });
+  const [uploadForm, setUploadForm] = useState(() => createUploadFormDefaults(channelConfigs[0]));
   const [showEditPanel, setShowEditPanel] = useState(false);
   const [showManualScheduleModal, setShowManualScheduleModal] = useState(false);
   const [editedSlotData, setEditedSlotData] = useState<{
@@ -283,24 +370,26 @@ function AppContent() {
     startTime: string;
     endTime: string;
   } | null>(null);
-  const [manualScheduleData, setManualScheduleData] = useState({
-    contentId: '',
-    day: '2024-12-24',
-    startTime: '06:00',
-  });
+  const [manualScheduleData, setManualScheduleData] = useState<ManualScheduleState>(createManualScheduleDefaults);
   const channelDropdownRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const analyticsFileInputRef = useRef<HTMLInputElement>(null);
 
-  const [scheduleData, setScheduleData] = useState<WeekSchedule[]>(weekSchedule);
+  const [scheduleData, setScheduleData] = useState<WeekSchedule[]>(() =>
+    loadStoredSchedule(channelConfigs[0].id, generateRollingSchedule(weekSchedule)),
+  );
   const [isOptimizingSchedule, setIsOptimizingSchedule] = useState(false);
   const [schedulerSummary, setSchedulerSummary] = useState<SchedulerSummary | null>(null);
 
-  const uploadedProgramCatalog = useMemo(() => mediaUploads.map(buildProgramFromUpload), [mediaUploads]);
+  const scopedMediaUploads = useMemo(
+    () => mediaUploads.map(normalizeMediaChannel).filter(media => media.channelId === selectedChannel.id),
+    [mediaUploads, selectedChannel.id],
+  );
+  const uploadedProgramCatalog = useMemo(() => scopedMediaUploads.map(buildProgramFromUpload), [scopedMediaUploads]);
   const contentMap = useMemo(() => new Map(uploadedProgramCatalog.map(program => [program.id, program] as const)), [uploadedProgramCatalog]);
-  const viewerBehaviorMap = useMemo(() => buildViewerBehaviorMap(mediaUploads), [mediaUploads]);
-  const transitionScoreMap = useMemo(() => buildTransitionScoreMap(uploadedProgramCatalog, mediaUploads), [uploadedProgramCatalog, mediaUploads]);
-  const retentionForecast = useMemo(() => buildRetentionForecast(mediaUploads), [mediaUploads]);
+  const viewerBehaviorMap = useMemo(() => buildViewerBehaviorMap(scopedMediaUploads), [scopedMediaUploads]);
+  const transitionScoreMap = useMemo(() => buildTransitionScoreMap(uploadedProgramCatalog, scopedMediaUploads), [uploadedProgramCatalog, scopedMediaUploads]);
+  const retentionForecast = useMemo(() => buildRetentionForecast(scopedMediaUploads), [scopedMediaUploads]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -326,7 +415,7 @@ function AppContent() {
   const loadMediaUploads = useCallback(async (): Promise<MediaUploadList> => {
     try {
       const data = await getMediaUploads();
-      const uploads = data as MediaUpload[];
+      const uploads = (data as MediaUpload[]).map(normalizeMediaChannel);
       setMediaUploads(uploads);
       return uploads;
     } catch (error) {
@@ -338,6 +427,19 @@ function AppContent() {
   useEffect(() => {
     loadMediaUploads();
   }, [loadMediaUploads]);
+
+  useEffect(() => {
+    setUploadForm(createUploadFormDefaults(selectedChannel));
+  }, [selectedChannel]);
+
+  useEffect(() => {
+    const fallbackSchedule = generateRollingSchedule(weekSchedule);
+    setScheduleData(loadStoredSchedule(selectedChannel.id, fallbackSchedule));
+  }, [selectedChannel.id]);
+
+  useEffect(() => {
+    saveStoredSchedule(selectedChannel.id, scheduleData);
+  }, [scheduleData, selectedChannel.id]);
 
   useEffect(() => {
     if (uploadedProgramCatalog.length === 0) {
@@ -436,6 +538,7 @@ function AppContent() {
 
     const tempItems = uploadSelections.map(({ file, thumbnail }, index) => ({
       id: `local-${Date.now()}-${index}`,
+      channelId: selectedChannel.id,
       title: uploadSelections.length === 1 && uploadForm.title
         ? uploadForm.title
         : file.name.replace(/\.[^/.]+$/, ''),
@@ -461,19 +564,12 @@ function AppContent() {
     setMediaUploads(prev => [...tempItems, ...prev]);
     setShowUploadModal(false);
     setUploadSelections([]);
-    setUploadForm({
-      title: '',
-      genre: '',
-      rating: 'TV-G',
-      targetAudience: '',
-      description: '',
-      transcription: '',
-      metadata: '',
-    });
+    setUploadForm(createUploadFormDefaults(selectedChannel));
 
     uploadSelections.forEach(({ file, thumbnail }, index) => {
       const tempId = tempItems[index].id;
       uploadMedia(file, {
+        channelId: selectedChannel.id,
         title: uploadSelections.length === 1 && uploadForm.title
           ? uploadForm.title
           : file.name,
@@ -494,7 +590,7 @@ function AppContent() {
           )));
         });
     });
-  }, [uploadSelections, uploadForm]);
+  }, [selectedChannel.id, uploadSelections, uploadForm]);
 
   const handleDeleteMedia = useCallback(async (mediaId: string) => {
     try {
@@ -567,11 +663,18 @@ function AppContent() {
     setIsEditingMedia(false);
   }, []);
 
+  useEffect(() => {
+    if (selectedMedia && (selectedMedia.channelId || channelConfigs[0].id) !== selectedChannel.id) {
+      closeMediaModal();
+    }
+  }, [closeMediaModal, selectedChannel.id, selectedMedia]);
+
   const saveMediaEdits = useCallback(async () => {
     if (!selectedMedia || !mediaEditForm) return;
 
     const nextMedia: MediaUpload = {
       ...selectedMedia,
+      channelId: selectedMedia.channelId || selectedChannel.id,
       title: mediaEditForm.title.trim() || selectedMedia.title,
       fileName: mediaEditForm.fileName.trim() || selectedMedia.fileName,
       fileSize: Number.isFinite(Number(mediaEditForm.fileSize)) ? Number(mediaEditForm.fileSize) : selectedMedia.fileSize,
@@ -609,6 +712,7 @@ function AppContent() {
 
     try {
       const updated = await updateMedia(selectedMedia.id, {
+        channelId: nextMedia.channelId,
         title: nextMedia.title,
         fileName: nextMedia.fileName,
         fileSize: nextMedia.fileSize,
@@ -724,47 +828,64 @@ function AppContent() {
   }, [editingSlot, editedSlotData, contentMap]);
 
   const handleManualSchedule = useCallback(() => {
-    if (!manualScheduleData.contentId || !manualScheduleData.day || !manualScheduleData.startTime) return;
+    if (!manualScheduleData.day || !manualScheduleData.startTime) return;
 
-    const content = contentMap.get(manualScheduleData.contentId);
-    if (!content) return;
+    const isLiveSchedule = manualScheduleData.scheduleType === 'live';
+    const content = isLiveSchedule ? null : contentMap.get(manualScheduleData.contentId);
+    if (!isLiveSchedule && !content) return;
+    const targetDayIndex = scheduleData.findIndex(day => day.date === manualScheduleData.day);
+    const parseTimeToMinutes = (time: string) => {
+      const [hours, minutes] = time.split(':').map(Number);
+      return hours * 60 + (minutes || 0);
+    };
 
-    const startHour = parseInt(manualScheduleData.startTime.split(':')[0]);
-    const endHour = startHour + Math.ceil(content.duration / 60);
-    const endTime = `${endHour.toString().padStart(2, '0')}:00`;
+    const startMinutes = parseTimeToMinutes(manualScheduleData.startTime);
+    const durationMinutes = isLiveSchedule ? 60 : Math.ceil((content?.duration || 60) / 60);
+    const endTimeMinutes = startMinutes + durationMinutes;
+    const endTime = `${String(Math.floor(endTimeMinutes / 60) % 24).padStart(2, '0')}:${String(endTimeMinutes % 60).padStart(2, '0')}`;
 
     const newSlot: ScheduleSlot = {
       id: `slot-manual-${Date.now()}`,
-      contentId: manualScheduleData.contentId,
+      contentId: isLiveSchedule ? `live-${Date.now()}` : manualScheduleData.contentId,
+      displayTitle: isLiveSchedule ? manualScheduleData.liveTitle.trim() || 'Live Stream' : undefined,
+      description: isLiveSchedule ? manualScheduleData.liveDescription.trim() : undefined,
+      scheduleType: isLiveSchedule ? 'live' : 'program',
       startTime: manualScheduleData.startTime,
       endTime,
-      predictedRetention: content.completionRate,
-      predictedDropoff: 100 - content.completionRate,
-      confidence: 0.75,
-      adBreaks: [{ id: `ad-manual-${Date.now()}`, position: Math.ceil(content.duration / 3), duration: 180, predictedImpressions: 150000, predictedCompletionRate: 82, type: 'midroll' }],
-      status: 'scheduled',
-      transitionRisk: 'medium',
+      predictedRetention: isLiveSchedule ? 88 : content!.completionRate,
+      predictedDropoff: isLiveSchedule ? 12 : 100 - content!.completionRate,
+      confidence: isLiveSchedule ? 0.92 : 0.75,
+      adBreaks: isLiveSchedule ? [] : [{ id: `ad-manual-${Date.now()}`, position: Math.ceil(content!.duration / 3), duration: 180, predictedImpressions: 150000, predictedCompletionRate: 82, type: 'midroll' }],
+      status: isLiveSchedule ? 'live' : 'scheduled',
+      transitionRisk: isLiveSchedule ? 'low' : 'medium',
       day: manualScheduleData.day,
       isEdited: true,
     };
 
     setScheduleData(prev => prev.map(day => {
       if (day.date === manualScheduleData.day) {
+        const newSlotStart = parseTimeToMinutes(manualScheduleData.startTime);
+        const newSlotEnd = parseTimeToMinutes(endTime);
         return {
           ...day,
-          slots: [...day.slots, newSlot].sort((a, b) => {
-            const timeA = parseInt(a.startTime.split(':')[0]);
-            const timeB = parseInt(b.startTime.split(':')[0]);
-            return timeA - timeB;
-          }),
+          slots: [...day.slots.filter(slot => {
+            const slotStart = parseTimeToMinutes(slot.startTime);
+            const slotEnd = parseTimeToMinutes(slot.endTime);
+            return slotEnd <= newSlotStart || slotStart >= newSlotEnd;
+          }), newSlot].sort((a, b) => parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime)),
         };
       }
       return day;
     }));
 
+    if (targetDayIndex >= 0) {
+      setSelectedDayIndex(targetDayIndex);
+      setScheduleViewMode('day');
+    }
+
     setShowManualScheduleModal(false);
-    setManualScheduleData({ contentId: '', day: '2024-12-24', startTime: '06:00' });
-  }, [manualScheduleData, contentMap]);
+    setManualScheduleData(createManualScheduleDefaults());
+  }, [manualScheduleData, contentMap, scheduleData]);
 
   const runIntelligentScheduler = useCallback(() => {
     if (uploadedProgramCatalog.length === 0) {
@@ -961,7 +1082,6 @@ function AppContent() {
                 predictedAdRevenue: 0,
                 predictedNovelty: 0,
                 predictedDiversity: 0,
-                repetitionPenalty: 100,
                 genrePenalty: 0,
                 seriesPenalty: 0,
                 actorPenalty: 0,
@@ -1687,7 +1807,7 @@ function AppContent() {
           {/* Media Upload */}
           {activeTab === 'media' && (
             <MediaLibrary
-              mediaUploads={mediaUploads}
+              mediaUploads={scopedMediaUploads}
               selectedMedia={selectedMedia}
               isEditingMedia={isEditingMedia}
               mediaEditForm={mediaEditForm}
@@ -1696,6 +1816,7 @@ function AppContent() {
               uploadSelections={uploadSelections}
               uploadError={uploadError}
               uploadForm={uploadForm}
+              activeChannel={selectedChannel}
               analyticsImportMessage={analyticsImportMessage}
               analyticsImportError={analyticsImportError}
               formatDuration={formatDuration}
@@ -1894,7 +2015,7 @@ function AppContent() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <div className="bg-slate-700/30 rounded-lg p-3">
                     <label className="text-xs text-slate-400 mb-1 block">Simulation Date</label>
-                    <input type="date" defaultValue="2024-12-24" className="w-full bg-slate-600 border border-slate-500 rounded px-3 py-2 text-sm text-slate-200" />
+                    <input type="date" defaultValue={getLocalDateString()} className="w-full bg-slate-600 border border-slate-500 rounded px-3 py-2 text-sm text-slate-200" />
                   </div>
                   <div className="bg-slate-700/30 rounded-lg p-3">
                     <label className="text-xs text-slate-400 mb-1 block">Time Block</label>

@@ -144,6 +144,7 @@ def init_db() -> None:
             transcoding_progress INTEGER,
             metadata TEXT,
             uploaded_at TEXT,
+            channel_id TEXT,
             thumbnail_url TEXT,
             transcription TEXT,
             transcription_source TEXT,
@@ -229,6 +230,8 @@ def _ensure_media_upload_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE media_uploads ADD COLUMN transcription_source TEXT")
     if "analytics_data" not in existing:
         conn.execute("ALTER TABLE media_uploads ADD COLUMN analytics_data TEXT")
+    if "channel_id" not in existing:
+        conn.execute("ALTER TABLE media_uploads ADD COLUMN channel_id TEXT")
 
 
 def json_dump(value: object) -> str:

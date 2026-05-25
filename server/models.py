@@ -151,6 +151,7 @@ class MediaUpload(BaseModel):
     transcodingProgress: int
     metadata: MediaMetadata
     uploadedAt: str
+    channelId: Optional[str] = None
     thumbnailUrl: Optional[str] = None
     transcription: Optional[str] = None
     transcriptionSource: Optional[str] = None
@@ -249,9 +250,11 @@ class MediaCreateRequest(BaseModel):
     fileSize: int
     duration: int
     metadata: MediaMetadata
+    channelId: Optional[str] = None
 
 
 class MediaUpdateRequest(BaseModel):
+    channelId: Optional[str] = None
     title: Optional[str] = None
     fileName: Optional[str] = None
     fileSize: Optional[int] = None

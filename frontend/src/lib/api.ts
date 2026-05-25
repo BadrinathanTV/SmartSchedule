@@ -78,6 +78,7 @@ export async function importProgramAnalytics(payload: { programs: Array<Record<s
 }
 
 export async function updateMedia(mediaId: string, payload: {
+  channelId?: string;
   title?: string;
   fileName?: string;
   fileSize?: number;
@@ -106,6 +107,7 @@ export async function updateMedia(mediaId: string, payload: {
 
 export async function uploadMedia(file: File, payload: {
   title: string;
+  channelId?: string;
   description?: string;
   genre?: string;
   rating?: string;
@@ -120,6 +122,7 @@ export async function uploadMedia(file: File, payload: {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('title', payload.title);
+  if (payload.channelId) formData.append('channelId', payload.channelId);
   if (payload.description) formData.append('description', payload.description);
   if (payload.genre) formData.append('genre', payload.genre);
   if (payload.rating) formData.append('rating', payload.rating);
