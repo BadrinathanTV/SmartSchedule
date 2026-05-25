@@ -14,29 +14,9 @@ Unlike traditional scheduling systems that use static rules or manual planning, 
 
 ---
 
-# End-to-End Workflow
+# Model Architecture
 
-```mermaid
-flowchart LR
-
-A[Upload Video] --> B[Extract Metadata]
-
-B --> C[Generate Transcript]
-
-C --> D[Create Semantic Embeddings]
-
-D --> E[Import Analytics]
-
-E --> F[Forecast Audience Metrics]
-
-F --> G[Calculate Diversity Scores]
-
-G --> H[RL Scheduler Selects Content]
-
-H --> I[Ad Placement]
-
-I --> J[Generate Final Schedule]
-```
+![Model Architecture](assets/Smart%20Scheduler.png)
 
 ---
 
